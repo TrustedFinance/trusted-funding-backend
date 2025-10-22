@@ -76,26 +76,27 @@ export const deleteAccount = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const user = req.user; // populated by auth middleware
-    const { name, phone, country, currency, wallets } = req.body;
+    const { name, phone, country, currency, walletAddresses } = req.body;
 
     if (name) user.name = name;
     if (phone) user.phone = phone;
     if (country) user.country = country;
     if (currency) user.currency = currency;
 
-
-    // Update wallet addresses - expects an object like { BTC: 'addr', ETH: 'addr' }
+    // Update wallet addresses - expects { BTC: 'addr', ETH: 'addr', USDT: 'addr' }
     if (walletAddresses && typeof walletAddresses === 'object') {
+      if (!user.walletAddresses) user.walletAddresses = {}; // initialize if missing
       for (const [coin, address] of Object.entries(walletAddresses)) {
-        if (user.walletAddresses.hasOwnProperty(coin)) {
-          user.walletAddresses[coin] = address;
-        }
+        user.walletAddresses[coin] = address;
       }
     }
 
     await user.save();
 
-    res.json({ message: 'Profile updated successfully', user });
+    res.json({
+      message: 'Profile updated successfully',
+      user
+    });
   } catch (err) {
     console.error('updateProfile error', err);
     res.status(500).json({ message: 'Error updating profile', error: err.message });

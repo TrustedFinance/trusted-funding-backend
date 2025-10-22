@@ -17,8 +17,8 @@ export const createInvestment = async (req, res) => {
     if (req.user.balance < amount) return res.status(400).json({ message: 'Insufficient balance' });
 
     const payoutAmount = amount * plan.multiplier;
-    const startAt = new Date();
-    const endAt = new Date(startAt.getTime() + plan.durationDays*24*60*60*1000);
+    const startAt = DateTime.now().toJSDate();
+    const endAt = DateTime.now().plus({ days: plan.durationDays }).toJSDate();
 
     const investment = await Investment.create({
       user: req.user._id,

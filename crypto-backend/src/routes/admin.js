@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import auth from '../middlewares/auth.js';
 import admin from '../middlewares/admin.js';
-import { adminLogin, adminRegister, blockUser, createPlan, deletePlan, deleteUser, editPlan } from '../controllers/adminController.js';
+import { adminLogin, adminRegister, blockUser, createPlan, deletePlan, deleteUser, editPlan, getInvestmentsDueTomorrow, getPendingAndDue } from '../controllers/adminController.js';
 import { getAllInvestments } from '../controllers/investmentController.js';
-import { approveWithdrawal, getAllTransactions, rejectWithdrawal } from '../controllers/transactionController.js';
+import { approveDeposit, approveWithdrawal, getAllTransactions, rejectDeposit, rejectWithdrawal } from '../controllers/transactionController.js';
 import { listAllNotifications } from '../controllers/notificationController.js';
 
 const router = Router();
@@ -28,10 +28,10 @@ router.delete('/plans/delete/:id', auth, admin, deletePlan)
 router.get('/transactions', auth, admin,  getAllTransactions)
 router.post('/transactions/withdrawals/:id/approve', auth, admin, approveWithdrawal)
 router.post('/transactions/withdrawals/:id/reject', auth, admin, rejectWithdrawal)
+router.patch('/admin/deposit/:id/approve', auth,  admin, approveDeposit);
+router.patch('/admin/deposit/:id/reject', auth,  admin, rejectDeposit);
 router.get('/notifications', auth, admin, listAllNotifications)
-
-//LeaderBoard
-
-
+router.get('/overview/pending-due', auth, admin, getPendingAndDue);
+router.get('/investments/due-tomorrow', auth, admin, getInvestmentsDueTomorrow);
 
 export default router;

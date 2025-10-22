@@ -1,4 +1,5 @@
 import { sendNotification } from '../../utils/notifications.js';
+import { recalcUserBalance } from '../../utils/recalculateBalance.js';
 import Transaction from '../models/Transaction.js';
 
 // ------------------- Helpers -------------------
@@ -119,36 +120,47 @@ export const getAllTransactions = async (req, res) => {
   }
 };
 
-// ------------------- Manual Deposit -------------------
+
+// ------------------- Manual Deposit (User-Initiated) -------------------
 export const deposit = async (req, res) => {
   try {
     const { amount, currency = 'USDT' } = req.body;
-    if (amount <= 0) return res.status(400).json({ message: 'Invalid deposit amount' });
+    const user = req.user;
 
-    await creditWallet(req.user, currency, amount);
+    if (amount <= 0) {
+      return res.status(400).json({ message: 'Invalid deposit amount' });
+    }
 
+    // The admin wallet address the user should send to
+    const adminWallet = process.env.ADMIN_WALLET_ADDRESS || 'bc1q8wjutukez77nlqzqql7qss2c5yujg5cz6h5xpu';
+
+    // Create a pending deposit transaction
     const tx = await Transaction.create({
-      user: req.user._id,
+      user: user._id,
       type: 'deposit',
       amount,
       currency,
-      status: 'completed',
-      reference: 'MANUAL-' + Date.now(),
-      meta: { note: 'Manual deposit to admin wallet' }
+      status: 'pending',
+      reference: 'DP-' + Date.now(),
+      meta: { toAddress: adminWallet }
     });
 
-  // Notify user
+    // Notify user of next step
     await sendNotification(
-      req.user._id,
+      user._id,
       'deposit',
-      `Your deposit of ${amount} ${currency} has been credited.`,
+      `Deposit request for ${amount} ${currency} created. Please send funds to ${adminWallet} and wait for admin approval.`,
       { transactionId: tx._id }
     );
 
-    res.json({ message: 'Deposit recorded', transaction: tx, wallets: req.user.wallets });
+    res.json({
+      message: 'Deposit request created. Send funds to admin address and wait for approval.',
+      adminAddress: adminWallet,
+      transaction: tx
+    });
   } catch (err) {
     console.error('deposit error', err);
-    res.status(500).json({ message: 'Deposit failed', error: err.message });
+    res.status(500).json({ message: 'Deposit initiation failed', error: err.message });
   }
 };
 
@@ -207,6 +219,7 @@ export const swap = async (req, res) => {
     // Ensure enough balance in fromCurrency
     await debitWallet(user, fromCurrency, fromAmount);
     await creditWallet(user, toCurrency, toAmount);
+    await recalcUserBalance(user);
 
     const tx = await Transaction.create({
       user: user._id,
@@ -268,6 +281,7 @@ export const approveWithdrawal = async (req, res) => {
 
     // Deduct only when admin approves
     await debitWallet(user, tx.currency, tx.amount);
+    await recalcUserBalance(user);
 
     tx.status = 'completed';
     await tx.save();
@@ -314,5 +328,58 @@ export const rejectWithdrawal = async (req, res) => {
   } catch (err) {
     console.error('rejectWithdrawal error', err);
     res.status(500).json({ message: 'Error rejecting withdrawal', error: err.message });
+  }
+};
+
+export const approveDeposit = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tx = await Transaction.findById(id).populate('user');
+    if (!tx) return res.status(404).json({ message: 'Transaction not found' });
+    if (tx.type !== 'deposit') return res.status(400).json({ message: 'Not a deposit transaction' });
+    if (tx.status !== 'pending') return res.status(400).json({ message: 'Transaction is not pending' });
+
+    const user = tx.user;
+    await creditWallet(user, tx.currency, tx.amount);
+    await recalcUserBalance(user);
+    tx.status = 'completed';
+    await tx.save();
+
+    await sendNotification(
+      user._id,
+      'deposit',
+      `Your deposit of ${tx.amount} ${tx.currency} has been approved and credited to your wallet.`,
+      { transactionId: tx._id }
+    );
+
+    res.json({ message: 'Deposit approved and funds credited', transaction: tx });
+  } catch (err) {
+    console.error('approveDeposit error', err);
+    res.status(500).json({ message: 'Error approving deposit', error: err.message });
+  }
+};
+
+export const rejectDeposit = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tx = await Transaction.findById(id).populate('user');
+    if (!tx) return res.status(404).json({ message: 'Transaction not found' });
+    if (tx.type !== 'deposit') return res.status(400).json({ message: 'Not a deposit transaction' });
+    if (tx.status !== 'pending') return res.status(400).json({ message: 'Transaction is not pending' });
+
+    tx.status = 'failed';
+    await tx.save();
+
+    await sendNotification(
+      tx.user._id,
+      'deposit',
+      `Your deposit of ${tx.amount} ${tx.currency} was rejected by the admin.`,
+      { transactionId: tx._id }
+    );
+
+    res.json({ message: 'Deposit rejected successfully', transaction: tx });
+  } catch (err) {
+    console.error('rejectDeposit error', err);
+    res.status(500).json({ message: 'Error rejecting deposit', error: err.message });
   }
 };

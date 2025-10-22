@@ -205,3 +205,74 @@ export const getLeaderboard = async (req, res) => {
     res.status(500).json({ message: 'Error fetching leaderboard', error: err.message });
   }
 };
+
+export const getPendingAndDue = async (req, res) => {
+  try {
+    // 1️⃣ Pending deposits
+    const pendingDeposits = await Transaction.find({
+      type: 'deposit',
+      status: 'pending'
+    })
+      .populate('user', 'name email phone')
+      .sort({ createdAt: -1 });
+
+    // 2️⃣ Pending withdrawals
+    const pendingWithdrawals = await Transaction.find({
+      type: 'withdrawal',
+      status: 'pending'
+    })
+      .populate('user', 'name email phone')
+      .sort({ createdAt: -1 });
+
+    // 3️⃣ Due investments
+    const now = DateTime.now().toJSDate();
+    const dueInvestments = await Investment.find({
+      status: 'active',
+      endAt: { $lte: now }
+    })
+      .populate('user', 'name email phone')
+      .populate('plan', 'name multiplier durationDays')
+      .sort({ endAt: 1 });
+
+    res.json({
+      message: 'Fetched pending and due items successfully',
+      pendingDeposits,
+      pendingWithdrawals,
+      dueInvestments,
+      summary: {
+        pendingDeposits: pendingDeposits.length,
+        pendingWithdrawals: pendingWithdrawals.length,
+        dueInvestments: dueInvestments.length
+      }
+    });
+  } catch (err) {
+    console.error('getPendingAndDue error', err);
+    res.status(500).json({ message: 'Error fetching pending and due items', error: err.message });
+  }
+};
+
+export const getInvestmentsDueTomorrow = async (req, res) => {
+  try {
+    // Start and end of tomorrow using Luxon
+    const tomorrowStart = DateTime.now().plus({ days: 1 }).startOf('day').toJSDate();
+    const tomorrowEnd = DateTime.now().plus({ days: 1 }).endOf('day').toJSDate();
+
+    const dueTomorrow = await Investment.find({
+      status: 'active',
+      endAt: { $gte: tomorrowStart, $lte: tomorrowEnd }
+    })
+      .populate('user', 'name email phone')
+      .populate('plan', 'name multiplier durationDays')
+      .sort({ endAt: 1 });
+
+    res.json({
+      message: 'Fetched investments due tomorrow successfully',
+      dateRange: { from: tomorrowStart, to: tomorrowEnd },
+      total: dueTomorrow.length,
+      investments: dueTomorrow
+    });
+  } catch (err) {
+    console.error('getInvestmentsDueTomorrow error', err);
+    res.status(500).json({ message: 'Error fetching due investments', error: err.message });
+  }
+};
