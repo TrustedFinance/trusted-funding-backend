@@ -37,6 +37,7 @@ import userRoutes from './routes/users.js';
 import investmentRoutes from './routes/investments.js';
 import adminRoutes from './routes/admin.js';
 import transactionRoutes from './routes/transactions.js';
+import notificationRoutes from './routes/notification.js';
 
 // Mount routes
 app.use('/api/auth', authRoutes);
@@ -44,6 +45,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/investments', investmentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/notifications', notificationRoutes)
 
 // Socket.io example
 io.on('connection', socket => {

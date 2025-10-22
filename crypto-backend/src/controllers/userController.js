@@ -101,3 +101,40 @@ export const updateProfile = async (req, res) => {
     res.status(500).json({ message: 'Error updating profile', error: err.message });
   }
 };
+
+export const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ message: 'Both current and new passwords are required' });
+    }
+
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // ✅ Check if current password is correct
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch)
+      return res.status(400).json({ message: 'Current password is incorrect' });
+
+    // ✅ Prevent using the same password again
+    const isSameAsOld = await bcrypt.compare(newPassword, user.password);
+    if (isSameAsOld)
+      return res
+        .status(400)
+        .json({ message: 'New password must be different from the current password' });
+
+    // ✅ Hash and update new password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
