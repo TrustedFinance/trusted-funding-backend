@@ -14,7 +14,7 @@ router.put('/update', auth, updateProfile);
 router.post('/select-country-currency', auth, selectCountryCurrency);
 router.delete('/me', auth, deleteAccount);
 router.get('/plans', auth, getAllPlans)
-router.post('/change-password', auth, changePassword)
+router.patch('/change-password', auth, changePassword)
 
 
 export default router;
