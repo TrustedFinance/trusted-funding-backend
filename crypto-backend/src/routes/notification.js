@@ -6,7 +6,7 @@ import auth from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.get('/', auth, getUserNotifications);
+router.get('/nptifications', auth, getUserNotifications);
 router.patch('/:id/read', auth, markNotificationRead);
 router.patch('/markAllRead', auth, markAllNotificationsRead);
 export default router;

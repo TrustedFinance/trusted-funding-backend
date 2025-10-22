@@ -19,7 +19,6 @@ router.delete('/user/:id', auth, admin, deleteUser);
 router.get('/investments/get', auth, admin, getAllInvestments)
 
 //Plans
-router.get('/plans', auth, admin, getAllPlans)
 router.post('/plans/create', auth, admin, createPlan)
 router.put('/plans/edit/:id', auth, admin, editPlan)
 router.delete('/plans/delete/:id', auth, admin, deletePlan)
