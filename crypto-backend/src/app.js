@@ -26,7 +26,9 @@ app.use(json());
 app.use(urlencoded({ extended: true }));
 app.use('/uploads', serveStatic('uploads'));
 
-const limiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 120 });
+app.set('trust proxy', 1)
+
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 2000 });
 app.use(limiter);
 
 // Routes (ES6 import style)
