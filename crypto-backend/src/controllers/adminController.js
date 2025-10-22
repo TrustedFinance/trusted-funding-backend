@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import User from '../models/User.js';
 import { InvestmentPlan } from '../models/Investment.js';
+import Transaction from '../models/Transaction.js';
 
 dotenv.config();
 
@@ -151,5 +152,56 @@ export const getAllPlans = async (req, res) => {
     res.json(plans);
   } catch (err) {
     res.status(500).json({ message: 'Fetch plans failed', error: err.message });
+  }
+};
+
+export const getLeaderboard = async (req, res) => {
+  try {
+    const { type, startDate, endDate, limit = 20 } = req.query;
+
+    const match = {};
+    if (type) match.type = type;
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) match.createdAt.$gte = new Date(startDate);
+      if (endDate) match.createdAt.$lte = new Date(endDate);
+    }
+
+    const leaderboard = await Transaction.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$user',
+          totalVolume: { $sum: '$amount' },
+          transactionCount: { $sum: 1 }
+        }
+      },
+      { $sort: { totalVolume: -1 } },
+      { $limit: parseInt(limit) },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          _id: 0,
+          userId: '$user._id',
+          name: '$user.fullname',
+          email: '$user.email',
+          totalVolume: 1,
+          transactionCount: 1
+        }
+      }
+    ]);
+
+    res.json({ leaderboard });
+  } catch (err) {
+    console.error('leaderboard error', err);
+    res.status(500).json({ message: 'Error fetching leaderboard', error: err.message });
   }
 };

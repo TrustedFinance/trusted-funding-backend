@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import auth from '../middlewares/auth.js';
 import admin from '../middlewares/admin.js';
-import { adminLogin, adminRegister, blockUser, createPlan, deletePlan, deleteUser, editPlan, getAllPlans } from '../controllers/adminController.js';
+import { adminLogin, adminRegister, blockUser, createPlan, deletePlan, deleteUser, editPlan, getAllPlans, getLeaderboard } from '../controllers/adminController.js';
 import { getAllInvestments } from '../controllers/investmentController.js';
 import { approveWithdrawal, getAllTransactions, rejectWithdrawal } from '../controllers/transactionController.js';
 
@@ -28,6 +28,9 @@ router.delete('/plans/delete/:id', auth, admin, deletePlan)
 router.get('/transactions', auth, admin,  getAllTransactions)
 router.post('/transactions/withdrawals/:id/approve', auth, admin, approveWithdrawal)
 router.post('/transactions/withdrawals/:id/reject', auth, admin, rejectWithdrawal)
+
+//LeaderBoard
+router.get('/leaderboard', auth, admin, getLeaderboard);
 
 
 export default router;
