@@ -1,6 +1,9 @@
 import User from '../models/User.js';
 import Kyc from '../models/Kyc.js';
+import bcrypt from 'bcryptjs'
 import { uploadToCloudinary } from '../middlewares/upload.js';
+import Transaction from '../models/Transaction.js';
+import { Investment } from '../models/Investment.js';
 
 export const getProfile = (req, res) => {
   res.json(req.user);
@@ -76,28 +79,69 @@ export const deleteAccount = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const user = req.user; // populated by auth middleware
-    const { name, phone, country, currency, wallets } = req.body;
+    const { name, phone, country, currency, walletAddresses } = req.body;
 
     if (name) user.name = name;
     if (phone) user.phone = phone;
     if (country) user.country = country;
     if (currency) user.currency = currency;
 
-
-    // Update wallet addresses - expects an object like { BTC: 'addr', ETH: 'addr' }
+    // Update wallet addresses - expects { BTC: 'addr', ETH: 'addr', USDT: 'addr' }
     if (walletAddresses && typeof walletAddresses === 'object') {
+      if (!user.walletAddresses) user.walletAddresses = {}; // initialize if missing
       for (const [coin, address] of Object.entries(walletAddresses)) {
-        if (user.walletAddresses.hasOwnProperty(coin)) {
-          user.walletAddresses[coin] = address;
-        }
+        user.walletAddresses[coin] = address;
       }
     }
 
     await user.save();
 
-    res.json({ message: 'Profile updated successfully', user });
+    res.json({
+      message: 'Profile updated successfully',
+      user
+    });
   } catch (err) {
     console.error('updateProfile error', err);
     res.status(500).json({ message: 'Error updating profile', error: err.message });
+  }
+};
+
+export const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ message: 'Both current and new passwords are required' });
+    }
+
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // ✅ Check if current password is correct
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch)
+      return res.status(400).json({ message: 'Current password is incorrect' });
+
+    // ✅ Prevent using the same password again
+    const isSameAsOld = await bcrypt.compare(newPassword, user.password);
+    if (isSameAsOld)
+      return res
+        .status(400)
+        .json({ message: 'New password must be different from the current password' });
+
+    // ✅ Hash and update new password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+
+    if (user.resetPasswordToken) user.resetPasswordToken = undefined;
+    if (user.resetPasswordExpires) user.resetPasswordExpires = undefined;
+
+    await user.save();
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    next(err);
   }
 };

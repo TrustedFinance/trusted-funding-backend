@@ -27,6 +27,8 @@ const userSchema = new Schema({
     BNB: { type: String, default: '' },
     // add more coins as needed
   },
+resetPasswordToken: { type: String },
+resetPasswordExpires: { type: Date },
 
   stats: {
     totalEarned: { type: Number, default: 0 },
