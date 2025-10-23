@@ -9,8 +9,8 @@ import { listAllNotifications } from '../controllers/notificationController.js';
 const router = Router();
 
 // auth
-router.post('/register', auth, admin, adminRegister)
-router.post('/login', auth, admin, adminLogin)
+router.post('/register',  adminRegister)
+router.post('/login',  adminLogin)
 
 // User
 router.post('/block/:id', auth, admin, blockUser);

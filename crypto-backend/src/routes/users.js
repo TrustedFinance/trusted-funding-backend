@@ -10,7 +10,7 @@ const router = express.Router();
 // router.get('/me', auth, getProfile);
 router.post('/kyc', auth, upload.fields([{ name: 'selfie' }, { name: 'idImage' }]), uploadKyc);
 router.get('/me', auth, getProfile);
-router.put('/update', auth, updateProfile);
+router.patch('/update', auth, updateProfile);
 router.post('/select-country-currency', auth, selectCountryCurrency);
 router.delete('/me', auth, deleteAccount);
 router.get('/plans', auth, getAllPlans)

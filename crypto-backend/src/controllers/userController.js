@@ -1,6 +1,9 @@
 import User from '../models/User.js';
 import Kyc from '../models/Kyc.js';
+import bcrypt from 'bcryptjs'
 import { uploadToCloudinary } from '../middlewares/upload.js';
+import Transaction from '../models/Transaction.js';
+import { Investment } from '../models/Investment.js';
 
 export const getProfile = (req, res) => {
   res.json(req.user);
@@ -131,6 +134,9 @@ export const changePassword = async (req, res, next) => {
     // ✅ Hash and update new password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
+
+    if (user.resetPasswordToken) user.resetPasswordToken = undefined;
+    if (user.resetPasswordExpires) user.resetPasswordExpires = undefined;
 
     await user.save();
 

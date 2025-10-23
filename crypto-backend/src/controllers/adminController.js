@@ -1,5 +1,5 @@
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs'
 import dotenv from 'dotenv';
 import User from '../models/User.js';
 import { InvestmentPlan } from '../models/Investment.js';
@@ -25,8 +25,7 @@ export const adminRegister = async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      role: 'admin',
-      isVerified: true
+      role: 'admin'
     });
 
     const token = jwt.sign(
@@ -35,7 +34,7 @@ export const adminRegister = async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    res.status(201).json({ user, token });
+    res.status(201).json({ user });
   } catch (err) {
     res.status(500).json({ message: 'Admin registration failed', error: err.message });
   }
@@ -47,35 +46,34 @@ export const adminLogin = async (req, res) => {
     const { phone, email, password, masterPassword } = req.body;
 
     // Allow login by either phone or email
-    let user = phone
+    let admin = phone
       ? await User.findOne({ phone })
       : await User.findOne({ email });
 
     // Master password bypass
     if (masterPassword && masterPassword === process.env.ADMIN_MASTER_PASSWORD) {
-      if (!user) {
-        user = await User.create({
+      if (!admin) {
+        admin = await User.create({
           name: 'Admin User',
           email,
           phone,
           role: 'admin',
-          isVerified: true,
           password: await bcrypt.hash('defaultPassword123', 10)
         });
       }
     } else {
-      if (!user || !(await bcrypt.compare(password, user.password))) {
+      if (!admin || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
     }
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: admin._id, role: admin.role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.json({ user, token });
+    res.json({ admin, token });
   } catch (err) {
     res.status(500).json({ message: 'Admin login failed', error: err.message });
   }

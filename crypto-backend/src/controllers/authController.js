@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs'
 import User from '../models/User.js';
+import crypto from 'crypto';
 import config from '../config/index.js';
 
 
@@ -24,7 +26,7 @@ export const register = async (req, res) => {
     const user = await User.create({ email, password, name, country, currency, phone });
     const token = signToken(user);
 
-    res.json({ token, user: { id: user._id, email: user.email, name: user.name } });
+    res.json({ user: { id: user._id, email: user.email, name: user.name } });
   } catch (err) {
     res.status(500).json({ message: 'Registration error', error: err.message });
   }
@@ -40,7 +42,10 @@ export const login = async (req, res) => {
     if (!ok) return res.status(400).json({ message: 'Invalid credentials' });
 
     const token = signToken(user);
-    res.json({ token, user: { id: user._id, email: user.email, name: user.name } });
+    res.json({
+      token,
+      user: { id: user._id, email: user.email, name: user.name }
+    });
   } catch (err) {
     res.status(500).json({ message: 'Login error', error: err.message });
   }
