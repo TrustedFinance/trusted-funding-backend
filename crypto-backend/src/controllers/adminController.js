@@ -117,6 +117,25 @@ export const blockUser = async (req, res) => {
   }
 };
 
+export const unblockUser = async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(req.params.id, { isBlocked: false }, { new: true });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    res.status(200).json({
+      success: true,
+      message: 'User unblocked successfully',
+      data: { user },
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: 'Error unblocking user',
+      error: err.message,
+    });
+  }
+};
+
 // ------------------- Delete User -------------------
 export const deleteUser = async (req, res) => {
   try {

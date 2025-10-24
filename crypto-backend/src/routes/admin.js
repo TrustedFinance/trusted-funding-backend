@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import auth from '../middlewares/auth.js';
 import admin from '../middlewares/admin.js';
-import { adminLogin, adminRegister, blockUser, createPlan, deletePlan, deleteUser, editPlan, getInvestmentsDueTomorrow, getPendingAndDue, listAllUsers } from '../controllers/adminController.js';
+import { adminLogin, adminRegister, blockUser, createPlan, deletePlan, deleteUser, editPlan, getInvestmentsDueTomorrow, getPendingAndDue, listAllUsers, unblockUser } from '../controllers/adminController.js';
 import { getAllInvestments } from '../controllers/investmentController.js';
 import { approveDeposit, approveWithdrawal, getAllTransactions, rejectDeposit, rejectWithdrawal } from '../controllers/transactionController.js';
 import { listAllNotifications } from '../controllers/notificationController.js';
@@ -15,6 +15,7 @@ router.post('/login',  adminLogin)
 // User
 router.get('/users', auth, admin, listAllUsers)
 router.put('/block/:id', auth, admin, blockUser);
+router.put('/unblock/:id', auth, admin, unblockUser);
 router.delete('/user/:id', auth, admin, deleteUser);
 
 // Investments
