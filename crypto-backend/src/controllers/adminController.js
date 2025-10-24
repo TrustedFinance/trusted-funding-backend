@@ -274,3 +274,56 @@ export const getInvestmentsDueTomorrow = async (req, res) => {
     res.status(500).json({ message: 'Error fetching due investments', error: err.message });
   }
 };
+
+export const listAllUsers = async (req, res) => {
+  try {
+    // Extract query parameters
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sort = '-createdAt', // default: newest first
+    } = req.query;
+
+    // Build filter object
+    const filter = {};
+
+    // 🔍 Filter by search (e.g., name or email)
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+
+    // 📄 Pagination
+    const skip = (page - 1) * limit;
+
+    // 🧮 Get total count for frontend pagination
+    const total = await User.countDocuments(filter);
+
+    // 🧱 Query users with filters, pagination, and sorting
+    const users = await User.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .select('-password'); // exclude password
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+      users,
+    });
+
+  } catch (error) {
+    console.error('Error listing users:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while listing users',
+    });
+  }
+};
