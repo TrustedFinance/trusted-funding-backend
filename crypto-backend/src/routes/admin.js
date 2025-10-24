@@ -27,8 +27,8 @@ router.delete('/plans/delete/:id', auth, admin, deletePlan)
 
 //Transactions
 router.get('/transactions', auth, admin,  getAllTransactions)
-router.post('/transactions/withdrawals/:id/approve', auth, admin, approveWithdrawal)
-router.post('/transactions/withdrawals/:id/reject', auth, admin, rejectWithdrawal)
+router.patch('/transactions/withdrawals/:id/approve', auth, admin, approveWithdrawal)
+router.patch('/transactions/withdrawals/:id/reject', auth, admin, rejectWithdrawal)
 router.patch('/admin/deposit/:id/approve', auth,  admin, approveDeposit);
 router.patch('/admin/deposit/:id/reject', auth,  admin, rejectDeposit);
 router.get('/notifications', auth, admin, listAllNotifications)
