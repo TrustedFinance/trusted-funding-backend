@@ -1,19 +1,14 @@
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs'
 import User from '../models/User.js';
 import crypto from 'crypto';
 import config from '../config/index.js';
 
-
-const JWT_SECRET = config.jwtSecret || process.env.JWT_SECRET || 'default_secret';
+const JWT_SECRET = config.jwtSecret || process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('Missing JWT_SECRET');
 const JWT_EXPIRES_IN = config.jwtExpiresIn || '7d';
 
 function signToken(user) {
-  return jwt.sign(
-    { id: user._id, role: user.role },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
-  );
+  return jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
 export const register = async (req, res) => {
@@ -21,93 +16,115 @@ export const register = async (req, res) => {
     const { email, password, name, country, currency, phone } = req.body;
 
     const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: 'Email already exists' });
+    if (exists)
+      return res.status(400).json({ success: false, message: 'Email already exists' });
 
     const user = await User.create({ email, password, name, country, currency, phone });
     const token = signToken(user);
 
-    res.json({ user: { id: user._id, email: user.email, name: user.name } });
+   // Get fiat equivalent of current balance
+    const fiatBalance = await getFiatBalance(user);
+
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful',
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        balances: Object.fromEntries(user.balances),
+        balance: fiatBalance, // <-- total in user's fiat currency
+        currency: user.currency
+      },
+    })
   } catch (err) {
-    res.status(500).json({ message: 'Registration error', error: err.message });
+    res.status(500).json({ success: false, message: 'Registration error', error: err.message });
   }
 };
 
+// ---------------- LOGIN ----------------
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!user)
+      return res.status(400).json({ success: false, message: 'Invalid credentials' });
 
     const ok = await user.comparePassword(password);
-    if (!ok) return res.status(400).json({ message: 'Invalid credentials' });
+    if (!ok)
+      return res.status(400).json({ success: false, message: 'Invalid credentials' });
 
     const token = signToken(user);
     res.json({
+      success: true,
+      message: 'Login successful',
       token,
-      user: { id: user._id, email: user.email, name: user.name }
+      user: { id: user._id, email: user.email, name: user.name },
     });
   } catch (err) {
-    res.status(500).json({ message: 'Login error', error: err.message });
+    res.status(500).json({ success: false, message: 'Login error', error: err.message });
   }
 };
 
-export const logout = async (req, res) => {
-  res.json({ message: 'Logged out successfully' });
+// ---------------- LOGOUT ----------------
+export const logout = (req, res) => {
+  res.json({ success: true, message: 'Logged out successfully' });
 };
 
+// ---------------- FORGOT PASSWORD ----------------
 export const forgotPassword = async (req, res) => {
   try {
-    const { phone } = req.body; // using phone instead of email
-
+    const { phone } = req.body;
     const user = await User.findOne({ phone });
-    if (!user) return res.status(404).json({ message: 'No user found with that phone number' });
+    if (!user)
+      return res.status(404).json({ success: false, message: 'No user found with that phone' });
 
-    // generate reset token
     const resetToken = crypto.randomBytes(20).toString('hex');
     const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
 
     user.resetPasswordToken = resetTokenHash;
-    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; // 15 minutes expiry
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
     await user.save();
 
-    // return token to client (for dev or SMS integration)
-    res.json({
-      message: 'Password reset token generated successfully',
-      token: resetToken,
-      expiresIn: '15 minutes'
-    });
+    if (process.env.NODE_ENV === 'development') {
+      res.json({
+        success: true,
+        message: 'Reset token (dev mode only)',
+        token: resetToken,
+        expiresIn: '15 minutes',
+      });
+    } else {
+      res.json({ success: true, message: 'Password reset instructions sent' });
+    }
   } catch (err) {
-    console.error('Forgot password error:', err);
-    res.status(500).json({ message: 'Error generating reset token', error: err.message });
+    res.status(500).json({ success: false, message: 'Error generating reset token', error: err.message });
   }
 };
 
-// ------------------- Reset Password -------------------
+// ---------------- RESET PASSWORD ----------------
 export const resetPassword = async (req, res) => {
   try {
     const { token, password } = req.body;
-
     if (!token || !password)
-      return res.status(400).json({ message: 'Token and new password are required' });
+      return res.status(400).json({ success: false, message: 'Token and password required' });
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
     const user = await User.findOne({
       resetPasswordToken: tokenHash,
-      resetPasswordExpires: { $gt: Date.now() } // check token still valid
+      resetPasswordExpires: { $gt: Date.now() },
     });
 
     if (!user)
-      return res.status(400).json({ message: 'Invalid or expired reset token' });
+      return res.status(400).json({ success: false, message: 'Invalid or expired reset token' });
 
-    user.password = await bcrypt.hash(password, 10);
+    user.password = password; // will hash automatically in model
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
     await user.save();
 
-    res.json({ message: 'Password reset successful. You can now log in.' });
+    res.json({ success: true, message: 'Password reset successful' });
   } catch (err) {
-    console.error('Reset password error:', err);
-    res.status(500).json({ message: 'Error resetting password', error: err.message });
+    res.status(500).json({ success: false, message: 'Error resetting password', error: err.message });
   }
 };
