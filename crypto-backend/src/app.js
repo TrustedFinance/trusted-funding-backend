@@ -21,7 +21,7 @@ connectDB(process.env.MONGO_URI).then(() => {
 
 // Security & middleware
 app.use(helmet());
-app.use(cors());
+app.use('*',cors());
 app.use(json());
 app.use(urlencoded({ extended: true }));
 app.use('/uploads', serveStatic('uploads'));
