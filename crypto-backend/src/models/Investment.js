@@ -3,16 +3,16 @@ import mongoose from 'mongoose';
 const { Schema, model, Types } = mongoose;
 
 // Allowed plan names from client
-const PLAN_NAMES = [
-  'Starter Flip',
-  'Silver Surge',
-  'Gold Power Plan',
-  'Diamond Elite'
-];
+// const PLAN_NAMES = [
+//   'Starter Flip',
+//   'Silver Surge',
+//   'Gold Power Plan',
+//   'Diamond Elite'
+// ];
 
 // Plan template (admin defines these)
 const investmentPlanSchema = new Schema({
-  name: { type: String, required: true, enum: PLAN_NAMES },
+  name: { type: String, required: true, },
   minAmount: { type: Number, required: true },
   maxAmount: { type: Number, required: true },
   multiplier: { type: Number, default: 7 },

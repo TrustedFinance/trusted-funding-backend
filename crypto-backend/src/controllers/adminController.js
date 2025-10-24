@@ -153,6 +153,17 @@ export const deleteUser = async (req, res) => {
   }
 };
 
+
+export const getAllPlans = async (req, res) => {
+  try {
+    const plans = await InvestmentPlan.find().sort({ createdAt: -1 });
+    res.status(200).json(plans);
+  } catch (err) {
+    console.error("❌ Error fetching plans:", err);
+    res.status(500).json({ success: false, message: 'Failed to fetch plans', error: err.message });
+  }
+};
+
 // ------------------- Create Investment Plan -------------------
 export const createPlan = async (req, res) => {
   try {
@@ -209,22 +220,22 @@ export const deletePlan = async (req, res) => {
 };
 
 // ------------------- Get All Plans -------------------
-export const getAllPlans = async (req, res) => {
-  try {
-    const plans = await InvestmentPlan.find();
-    res.status(200).json({
-      success: true,
-      message: 'Fetched all investment plans successfully',
-      data: { plans },
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: 'Fetch plans failed',
-      error: err.message,
-    });
-  }
-};
+// export const getAllPlans = async (req, res) => {
+//   try {
+//     const plans = await InvestmentPlan.find();
+//     res.status(200).json({
+//       success: true,
+//       message: 'Fetched all investment plans successfully',
+//       data: { plans },
+//     });
+//   } catch (err) {
+//     res.status(500).json({
+//       success: false,
+//       message: 'Fetch plans failed',
+//       error: err.message,
+//     });
+//   }
+// };
 
 // ------------------- Leaderboard -------------------
 export const getLeaderboard = async (req, res) => {
