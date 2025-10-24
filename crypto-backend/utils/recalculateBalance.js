@@ -61,17 +61,12 @@ export async function recalcUserBalance(user) {
   const prices = await getCryptoPrices();
   let total = 0;
 
-  for (const [coin, amt] of Object.entries(user.wallets || {})) {
+  for (const [coin, amount] of user.balances.entries()) {
     const price = prices[coin] || 0;
-    total += amt * price;
+    total += amount * price;
   }
 
   user.balance = total;
-
-  if (user.currency && user.currency !== 'USDT') {
-    user.balanceInCurrency = await convertUsdtToCurrency(total, user.currency);
-  }
-
   await user.save();
-  return user.balance;
+  return total;
 }

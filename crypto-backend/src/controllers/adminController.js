@@ -1,42 +1,60 @@
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs'
+import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import { DateTime } from 'luxon';
 import User from '../models/User.js';
+import { Investment } from '../models/Investment.js';
 import { InvestmentPlan } from '../models/Investment.js';
 import Transaction from '../models/Transaction.js';
 
 dotenv.config();
+
+// Helper to create JWT
+const createToken = (user) => {
+  return jwt.sign(
+    { id: user._id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+};
 
 // ------------------- Admin Register -------------------
 export const adminRegister = async (req, res) => {
   try {
     const { name, phone, email, password, masterPassword } = req.body;
 
-    if (masterPassword !== process.env.ADMIN_MASTER_PASSWORD)
-      return res.status(401).json({ message: 'Invalid master password' });
+    if (masterPassword !== process.env.ADMIN_MASTER_PASSWORD) {
+      return res.status(401).json({ success: false, message: 'Invalid master password' });
+    }
 
-    let user = await User.findOne({ phone });
-    if (user) return res.status(400).json({ message: 'User already exists' });
+    const existing = await User.findOne({ phone });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'User already exists' });
+    }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 10);
 
-    user = await User.create({
-      phone,
+    const user = await User.create({
       name,
+      phone,
       email,
-      password: hashedPassword,
-      role: 'admin'
+      password: hashed,
+      role: 'admin',
     });
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = createToken(user);
 
-    res.status(201).json({ user });
+    res.status(201).json({
+      success: true,
+      message: 'Admin registered successfully',
+      data: { user, token },
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Admin registration failed', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Admin registration failed',
+      error: err.message,
+    });
   }
 };
 
@@ -45,101 +63,129 @@ export const adminLogin = async (req, res) => {
   try {
     const { phone, email, password, masterPassword } = req.body;
 
-    // Allow login by either phone or email
     let admin = phone
       ? await User.findOne({ phone })
       : await User.findOne({ email });
 
-    // Master password bypass
+    if (!admin) {
+      return res.status(404).json({ success: false, message: 'Admin not found' });
+    }
+
+    // Allow master password login (but don’t auto-create)
     if (masterPassword && masterPassword === process.env.ADMIN_MASTER_PASSWORD) {
-      if (!admin) {
-        admin = await User.create({
-          name: 'Admin User',
-          email,
-          phone,
-          role: 'admin',
-          password: await bcrypt.hash('defaultPassword123', 10)
-        });
-      }
+      // pass
     } else {
-      if (!admin || !(await bcrypt.compare(password, user.password))) {
-        return res.status(401).json({ message: 'Invalid credentials' });
+      const match = await bcrypt.compare(password, admin.password);
+      if (!match) {
+        return res.status(401).json({ success: false, message: 'Invalid credentials' });
       }
     }
 
-    const token = jwt.sign(
-      { id: admin._id, role: admin.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = createToken(admin);
 
-    res.json({ admin, token });
+    res.status(200).json({
+      success: true,
+      message: 'Admin login successful',
+      data: { user: admin, token },
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Admin login failed', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Admin login failed',
+      error: err.message,
+    });
   }
 };
 
 // ------------------- Block User -------------------
 export const blockUser = async (req, res) => {
   try {
-    const { id } = req.params;
-    const u = await User.findByIdAndUpdate(id, { isBlocked: true }, { new: true });
-    if (!u) return res.status(404).json({ message: 'User not found' });
-    res.json(u);
+    const user = await User.findByIdAndUpdate(req.params.id, { isBlocked: true }, { new: true });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    res.status(200).json({
+      success: true,
+      message: 'User blocked successfully',
+      data: { user },
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Error blocking user', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Error blocking user',
+      error: err.message,
+    });
   }
 };
 
 // ------------------- Delete User -------------------
 export const deleteUser = async (req, res) => {
   try {
-    const { id } = req.params;
-    await User.findByIdAndDelete(id);
-    res.json({ message: 'User deleted successfully' });
+    await User.findByIdAndDelete(req.params.id);
+    res.status(200).json({
+      success: true,
+      message: 'User deleted successfully',
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Error deleting user', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting user',
+      error: err.message,
+    });
   }
 };
 
 // ------------------- Create Investment Plan -------------------
 export const createPlan = async (req, res) => {
   try {
-    const { name, minAmount, maxAmount, multiplier, durationDays, description } = req.body;
-    const plan = await InvestmentPlan.create({
-      name,
-      minAmount,
-      maxAmount,
-      multiplier,
-      durationDays,
-      description
+    const plan = await InvestmentPlan.create(req.body);
+    res.status(201).json({
+      success: true,
+      message: 'Investment plan created successfully',
+      data: { plan },
     });
-    res.json({ message: 'Plan created', plan });
   } catch (err) {
-    res.status(500).json({ message: 'Create plan failed', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Create plan failed',
+      error: err.message,
+    });
   }
 };
 
 // ------------------- Edit Investment Plan -------------------
 export const editPlan = async (req, res) => {
   try {
-    const { id } = req.params;
-    const plan = await InvestmentPlan.findByIdAndUpdate(id, req.body, { new: true });
-    if (!plan) return res.status(404).json({ message: 'Plan not found' });
-    res.json({ message: 'Plan updated', plan });
+    const plan = await InvestmentPlan.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!plan) return res.status(404).json({ success: false, message: 'Plan not found' });
+
+    res.status(200).json({
+      success: true,
+      message: 'Plan updated successfully',
+      data: { plan },
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Edit plan failed', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Edit plan failed',
+      error: err.message,
+    });
   }
 };
 
 // ------------------- Delete Investment Plan -------------------
 export const deletePlan = async (req, res) => {
   try {
-    const { id } = req.params;
-    await InvestmentPlan.findByIdAndDelete(id);
-    res.json({ message: 'Plan deleted' });
+    await InvestmentPlan.findByIdAndDelete(req.params.id);
+    res.status(200).json({
+      success: true,
+      message: 'Plan deleted successfully',
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Delete plan failed', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Delete plan failed',
+      error: err.message,
+    });
   }
 };
 
@@ -147,17 +193,26 @@ export const deletePlan = async (req, res) => {
 export const getAllPlans = async (req, res) => {
   try {
     const plans = await InvestmentPlan.find();
-    res.json(plans);
+    res.status(200).json({
+      success: true,
+      message: 'Fetched all investment plans successfully',
+      data: { plans },
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Fetch plans failed', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Fetch plans failed',
+      error: err.message,
+    });
   }
 };
 
+// ------------------- Leaderboard -------------------
 export const getLeaderboard = async (req, res) => {
   try {
     const { type, startDate, endDate, limit = 20 } = req.query;
-
     const match = {};
+
     if (type) match.type = type;
     if (startDate || endDate) {
       match.createdAt = {};
@@ -171,8 +226,8 @@ export const getLeaderboard = async (req, res) => {
         $group: {
           _id: '$user',
           totalVolume: { $sum: '$amount' },
-          transactionCount: { $sum: 1 }
-        }
+          transactionCount: { $sum: 1 },
+        },
       },
       { $sort: { totalVolume: -1 } },
       { $limit: parseInt(limit) },
@@ -181,114 +236,123 @@ export const getLeaderboard = async (req, res) => {
           from: 'users',
           localField: '_id',
           foreignField: '_id',
-          as: 'user'
-        }
+          as: 'user',
+        },
       },
       { $unwind: '$user' },
       {
         $project: {
           _id: 0,
           userId: '$user._id',
-          name: '$user.fullname',
+          name: '$user.name',
           email: '$user.email',
           totalVolume: 1,
-          transactionCount: 1
-        }
-      }
+          transactionCount: 1,
+        },
+      },
     ]);
 
-    res.json({ leaderboard });
+    res.status(200).json({
+      success: true,
+      message: 'Fetched leaderboard successfully',
+      data: { leaderboard },
+    });
   } catch (err) {
-    console.error('leaderboard error', err);
-    res.status(500).json({ message: 'Error fetching leaderboard', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching leaderboard',
+      error: err.message,
+    });
   }
 };
 
+// ------------------- Pending & Due -------------------
 export const getPendingAndDue = async (req, res) => {
   try {
-    // 1️⃣ Pending deposits
     const pendingDeposits = await Transaction.find({
       type: 'deposit',
-      status: 'pending'
+      status: 'pending',
     })
       .populate('user', 'name email phone')
       .sort({ createdAt: -1 });
 
-    // 2️⃣ Pending withdrawals
     const pendingWithdrawals = await Transaction.find({
       type: 'withdrawal',
-      status: 'pending'
+      status: 'pending',
     })
       .populate('user', 'name email phone')
       .sort({ createdAt: -1 });
 
-    // 3️⃣ Due investments
     const now = DateTime.now().toJSDate();
     const dueInvestments = await Investment.find({
       status: 'active',
-      endAt: { $lte: now }
+      endAt: { $lte: now },
     })
       .populate('user', 'name email phone')
       .populate('plan', 'name multiplier durationDays')
       .sort({ endAt: 1 });
 
-    res.json({
+    res.status(200).json({
+      success: true,
       message: 'Fetched pending and due items successfully',
-      pendingDeposits,
-      pendingWithdrawals,
-      dueInvestments,
-      summary: {
-        pendingDeposits: pendingDeposits.length,
-        pendingWithdrawals: pendingWithdrawals.length,
-        dueInvestments: dueInvestments.length
-      }
+      data: {
+        pendingDeposits,
+        pendingWithdrawals,
+        dueInvestments,
+        summary: {
+          pendingDeposits: pendingDeposits.length,
+          pendingWithdrawals: pendingWithdrawals.length,
+          dueInvestments: dueInvestments.length,
+        },
+      },
     });
   } catch (err) {
-    console.error('getPendingAndDue error', err);
-    res.status(500).json({ message: 'Error fetching pending and due items', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching pending and due items',
+      error: err.message,
+    });
   }
 };
 
+// ------------------- Due Tomorrow -------------------
 export const getInvestmentsDueTomorrow = async (req, res) => {
   try {
-    // Start and end of tomorrow using Luxon
     const tomorrowStart = DateTime.now().plus({ days: 1 }).startOf('day').toJSDate();
     const tomorrowEnd = DateTime.now().plus({ days: 1 }).endOf('day').toJSDate();
 
-    const dueTomorrow = await Investment.find({
+    const investments = await Investment.find({
       status: 'active',
-      endAt: { $gte: tomorrowStart, $lte: tomorrowEnd }
+      endAt: { $gte: tomorrowStart, $lte: tomorrowEnd },
     })
       .populate('user', 'name email phone')
       .populate('plan', 'name multiplier durationDays')
       .sort({ endAt: 1 });
 
-    res.json({
+    res.status(200).json({
+      success: true,
       message: 'Fetched investments due tomorrow successfully',
-      dateRange: { from: tomorrowStart, to: tomorrowEnd },
-      total: dueTomorrow.length,
-      investments: dueTomorrow
+      data: {
+        dateRange: { from: tomorrowStart, to: tomorrowEnd },
+        total: investments.length,
+        investments,
+      },
     });
   } catch (err) {
-    console.error('getInvestmentsDueTomorrow error', err);
-    res.status(500).json({ message: 'Error fetching due investments', error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching due investments',
+      error: err.message,
+    });
   }
 };
 
+// ------------------- List All Users (with search, pagination) -------------------
 export const listAllUsers = async (req, res) => {
   try {
-    // Extract query parameters
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      sort = '-createdAt', // default: newest first
-    } = req.query;
-
-    // Build filter object
+    const { page = 1, limit = 10, search, sort = '-createdAt' } = req.query;
     const filter = {};
 
-    // 🔍 Filter by search (e.g., name or email)
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -296,34 +360,31 @@ export const listAllUsers = async (req, res) => {
       ];
     }
 
-
-    // 📄 Pagination
     const skip = (page - 1) * limit;
-
-    // 🧮 Get total count for frontend pagination
     const total = await User.countDocuments(filter);
 
-    // 🧱 Query users with filters, pagination, and sorting
     const users = await User.find(filter)
       .sort(sort)
       .skip(skip)
       .limit(parseInt(limit))
-      .select('-password'); // exclude password
+      .select('-password');
 
     res.status(200).json({
       success: true,
-      count: users.length,
-      total,
-      page: parseInt(page),
-      pages: Math.ceil(total / limit),
-      users,
+      message: 'Users fetched successfully',
+      data: {
+        count: users.length,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / limit),
+        users,
+      },
     });
-
-  } catch (error) {
-    console.error('Error listing users:', error);
+  } catch (err) {
     res.status(500).json({
       success: false,
-      message: 'Server error while listing users',
+      message: 'Error listing users',
+      error: err.message,
     });
   }
 };

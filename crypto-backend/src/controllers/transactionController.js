@@ -1,26 +1,8 @@
+import { creditBalance, debitBalance } from '../../utils/balanceUtils.js';
 import { sendNotification } from '../../utils/notifications.js';
 import { recalcUserBalance } from '../../utils/recalculateBalance.js';
 import Transaction from '../models/Transaction.js';
 
-// ------------------- Helpers -------------------
-// Credit internal wallet
-const creditWallet = async (user, currency, amount) => {
-  const current = user.wallets.get(currency) || 0;
-  user.wallets.set(currency, current + amount);
-  user.balance += amount; // keep total balance synced
-  await user.save();
-};
-
-// Debit internal wallet
-const debitWallet = async (user, currency, amount) => {
-  const current = user.wallets.get(currency) || 0;
-  if (current < amount) throw new Error(`Insufficient ${currency} balance`);
-  user.wallets.set(currency, current - amount);
-  user.balance -= amount; // keep total balance synced
-  await user.save();
-};
-
-// ------------------- Transactions -------------------
 
 // Get transactions for logged-in user
 export const getUserTransactions = async (req, res) => {
@@ -34,7 +16,6 @@ export const getUserTransactions = async (req, res) => {
   }
 };
 
-// Admin: Get all transactions with filters
 // ------------------- Admin: Get All Transactions (Enhanced) -------------------
 export const getAllTransactions = async (req, res) => {
   try {
@@ -119,7 +100,6 @@ export const getAllTransactions = async (req, res) => {
     });
   }
 };
-
 
 // ------------------- Manual Deposit (User-Initiated) -------------------
 export const deposit = async (req, res) => {
@@ -211,14 +191,15 @@ export const withdraw = async (req, res) => {
 export const swap = async (req, res) => {
   try {
     const { fromCurrency, toCurrency, fromAmount, toAmount } = req.body;
-    if (!fromCurrency || !toCurrency || !fromAmount || !toAmount)
+    if (!fromCurrency || !toCurrency || !fromAmount || !toAmount) {
       return res.status(400).json({ message: 'Invalid swap parameters' });
+    }
 
-    const user = req.user;
+    const user = await User.findById(req.user._id);
 
-    // Ensure enough balance in fromCurrency
-    await debitWallet(user, fromCurrency, fromAmount);
-    await creditWallet(user, toCurrency, toAmount);
+    await debitBalance(user, fromCurrency, parseFloat(fromAmount));
+    await creditBalance(user, toCurrency, parseFloat(toAmount));
+
     await recalcUserBalance(user);
 
     const tx = await Transaction.create({
@@ -228,24 +209,30 @@ export const swap = async (req, res) => {
       currency: fromCurrency,
       status: 'completed',
       reference: 'SWAP-' + Date.now(),
-      meta: { toCurrency, toAmount }
+      meta: { toCurrency, toAmount },
     });
-  await sendNotification(
-      req.user._id,
+
+    await sendNotification(
+      user._id,
       'swap',
       `You swapped ${fromAmount} ${fromCurrency} to ${toAmount} ${toCurrency}.`,
       { transactionId: tx._id }
     );
 
-    res.json({ message: 'Swap completed', transaction: tx, wallets: user.wallets });
+    res.json({
+      success: true,
+      message: 'Swap completed successfully',
+      transaction: tx,
+      balances: Object.fromEntries(user.balances),
+      totalBalanceUSD: user.balance,
+    });
   } catch (err) {
-    console.error('swap error', err);
+    console.error('swap error:', err);
     res.status(500).json({ message: 'Swap failed', error: err.message });
   }
 };
 
 // ------------------- Receive -------------------
-// Return the user's USDT deposit address
 export const receive = async (req, res) => {
   try {
     // Ensure the user has a USDT wallet address
@@ -271,32 +258,34 @@ export const receive = async (req, res) => {
 export const approveWithdrawal = async (req, res) => {
   try {
     const { id } = req.params;
-
     const tx = await Transaction.findById(id).populate('user');
     if (!tx) return res.status(404).json({ message: 'Transaction not found' });
     if (tx.type !== 'withdrawal') return res.status(400).json({ message: 'Not a withdrawal transaction' });
-    if (tx.status !== 'pending') return res.status(400).json({ message: 'Transaction is not pending' });
+    if (tx.status !== 'pending') return res.status(400).json({ message: 'Transaction not pending' });
 
     const user = tx.user;
-
-    // Deduct only when admin approves
-    await debitWallet(user, tx.currency, tx.amount);
+    await debitBalance(user, tx.currency, tx.amount);
     await recalcUserBalance(user);
 
     tx.status = 'completed';
     await tx.save();
 
-    // Notify user of successful withdrawal
     await sendNotification(
       user._id,
       'withdrawal',
-      `Your withdrawal of ${tx.amount} ${tx.currency} to ${tx.meta.toAddress} has been approved.`,
+      `Your withdrawal of ${tx.amount} ${tx.currency} has been approved.`,
       { transactionId: tx._id }
     );
 
-    res.json({ message: 'Withdrawal approved and funds deducted', transaction: tx });
+    res.json({
+      success: true,
+      message: 'Withdrawal approved successfully',
+      balances: Object.fromEntries(user.balances),
+      totalBalanceUSD: user.balance,
+      transaction: tx,
+    });
   } catch (err) {
-    console.error('approveWithdrawal error', err);
+    console.error('approveWithdrawal error:', err);
     res.status(500).json({ message: 'Error approving withdrawal', error: err.message });
   }
 };
@@ -337,24 +326,31 @@ export const approveDeposit = async (req, res) => {
     const tx = await Transaction.findById(id).populate('user');
     if (!tx) return res.status(404).json({ message: 'Transaction not found' });
     if (tx.type !== 'deposit') return res.status(400).json({ message: 'Not a deposit transaction' });
-    if (tx.status !== 'pending') return res.status(400).json({ message: 'Transaction is not pending' });
+    if (tx.status !== 'pending') return res.status(400).json({ message: 'Transaction not pending' });
 
     const user = tx.user;
-    await creditWallet(user, tx.currency, tx.amount);
+    await creditBalance(user, tx.currency, tx.amount);
     await recalcUserBalance(user);
+
     tx.status = 'completed';
     await tx.save();
 
     await sendNotification(
       user._id,
       'deposit',
-      `Your deposit of ${tx.amount} ${tx.currency} has been approved and credited to your wallet.`,
+      `Your deposit of ${tx.amount} ${tx.currency} has been approved and credited.`,
       { transactionId: tx._id }
     );
 
-    res.json({ message: 'Deposit approved and funds credited', transaction: tx });
+    res.json({
+      success: true,
+      message: 'Deposit approved and funds credited',
+      balances: Object.fromEntries(user.balances),
+      totalBalanceUSD: user.balance,
+      transaction: tx,
+    });
   } catch (err) {
-    console.error('approveDeposit error', err);
+    console.error('approveDeposit error:', err);
     res.status(500).json({ message: 'Error approving deposit', error: err.message });
   }
 };

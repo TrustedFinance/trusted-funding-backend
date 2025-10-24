@@ -4,9 +4,31 @@ import bcrypt from 'bcryptjs'
 import { uploadToCloudinary } from '../middlewares/upload.js';
 import Transaction from '../models/Transaction.js';
 import { Investment } from '../models/Investment.js';
+import { getFiatBalance } from '../../utils/balanceUtils.js';
 
 export const getProfile = (req, res) => {
   res.json(req.user);
+};
+
+export const getPortfolio = async (req, res) => {
+  const user = await User.findById(req.user._id);
+  const prices = await getCryptoPrices();
+
+  const portfolio = Object.entries(user.balances || {}).map(([coin, amt]) => ({
+    coin,
+    amount: amt,
+    price: prices[coin],
+    valueUSD: amt * prices[coin]
+  }));
+
+  const totalUSD = portfolio.reduce((sum, c) => sum + c.valueUSD, 0);
+
+  res.json({
+    success: true,
+    totalUSD,
+    portfolio,
+    balanceInCurrency: user.currency ? await convertUsdtToCurrency(totalUSD, user.currency) : totalUSD
+  });
 };
 
 export const uploadKyc = async (req, res) => {
@@ -47,7 +69,16 @@ export const selectCountryCurrency = async (req, res) => {
     req.user.country = country;
     req.user.currency = currency;
     await req.user.save();
-    res.json({ message: 'Country & currency saved' });
+
+    // Recalculate fiat balance
+    const fiatBalance = await getFiatBalance(req.user);
+
+    res.json({
+      message: 'Country & currency saved',
+      currency: req.user.currency,
+      balances: Object.fromEntries(req.user.balances),
+      balance: fiatBalance
+    });
   } catch (err) {
     res.status(500).json({ message: 'Error saving country/currency', error: err.message });
   }
