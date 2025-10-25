@@ -1,23 +1,29 @@
 import axios from "axios";
+import User from "../src/models/User";
 
-// utils/balanceUtils.js
-export async function creditBalance(user, coin, amount) {
+export async function creditBalance(userOrId, coin, amount) {
+  const user = userOrId._id ? userOrId : await User.findById(userOrId);
+  if (!user) throw new Error('User not found');
+
   const current = Number(user.balances.get(coin) || 0);
   user.balances.set(coin, current + Number(amount));
+
   await user.save();
   return user;
 }
 
-export async function debitBalance(user, coin, amount) {
+export async function debitBalance(userOrId, coin, amount) {
+  const user = userOrId._id ? userOrId : await User.findById(userOrId);
+  if (!user) throw new Error('User not found');
+
   const current = Number(user.balances.get(coin) || 0);
-  if (current < amount) {
-    throw new Error(`Insufficient ${coin} balance`);
-  }
+  if (current < amount) throw new Error(`Insufficient ${coin} balance`);
+
   user.balances.set(coin, current - Number(amount));
+
   await user.save();
   return user;
 }
-
 // ---------------- Fiat Equivalent ----------------
 
 /**

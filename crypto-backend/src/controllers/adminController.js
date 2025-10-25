@@ -154,30 +154,15 @@ export const deleteUser = async (req, res) => {
   }
 };
 
+// controllers/planController.js
+
 export const getAllPlans = async (req, res) => {
   try {
-    // Read currency from query (optional)
-    const currency = (req.query.currency || 'USD').toUpperCase();
-
     const plans = await InvestmentPlan.find().sort({ createdAt: -1 });
-
-    const results = await Promise.all(
-      plans.map(async (plan) => {
-        const minConv = await convertUSDToFiat(plan.minAmount, currency);
-        const maxConv = await convertUSDToFiat(plan.maxAmount, currency);
-
-        return {
-          ...plan.toObject(),
-          minAmount: parseFloat(minConv.fiat.toFixed(2)),
-          maxAmount: parseFloat(maxConv.fiat.toFixed(2)),
-          currency,
-        };
-      })
-    );
 
     res.status(200).json({
       success: true,
-      plans: results,
+      plans,
     });
   } catch (err) {
     console.error('❌ Error fetching public plans:', err);

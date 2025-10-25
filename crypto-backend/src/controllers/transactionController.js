@@ -312,17 +312,20 @@ export const receive = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch deposit address', error: err.message });
   }
 };
-
 // ------------------- Admin: Approve Withdrawal -------------------
 export const approveWithdrawal = async (req, res) => {
   try {
     const { id } = req.params;
-    const tx = await Transaction.findById(id).populate('user');
+    const tx = await Transaction.findById(id);
     if (!tx) return res.status(404).json({ message: 'Transaction not found' });
     if (tx.type !== 'withdrawal') return res.status(400).json({ message: 'Not a withdrawal transaction' });
     if (tx.status !== 'pending') return res.status(400).json({ message: 'Transaction not pending' });
 
-    const user = tx.user;
+    // Fetch real user
+    const user = await User.findById(tx.user);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // 👇 If withdrawal funds were not deducted earlier, debit here
     await debitBalance(user, tx.currency, tx.amount);
     await recalcUserBalance(user);
 
@@ -382,12 +385,16 @@ export const rejectWithdrawal = async (req, res) => {
 export const approveDeposit = async (req, res) => {
   try {
     const { id } = req.params;
-    const tx = await Transaction.findById(id).populate('user');
+    const tx = await Transaction.findById(id);
     if (!tx) return res.status(404).json({ message: 'Transaction not found' });
     if (tx.type !== 'deposit') return res.status(400).json({ message: 'Not a deposit transaction' });
     if (tx.status !== 'pending') return res.status(400).json({ message: 'Transaction not pending' });
 
-    const user = tx.user;
+    // Fetch real user
+    const user = await User.findById(tx.user);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // ✅ Credit funds
     await creditBalance(user, tx.currency, tx.amount);
     await recalcUserBalance(user);
 
