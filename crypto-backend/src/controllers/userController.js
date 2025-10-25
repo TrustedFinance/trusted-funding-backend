@@ -74,8 +74,15 @@ export const uploadKyc = async (req, res) => {
       idImageUrl: idImageResult.secure_url
     });
 
-    req.user.kyc = kyc._id;
-    await req.user.save();
+    // 🔥 Re-fetch and persist properly
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.kyc = kyc._id;
+    await user.save();
+
 
     res.json({ message: 'KYC submitted successfully', kyc });
   } catch (err) {
