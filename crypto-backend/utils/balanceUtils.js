@@ -1,5 +1,5 @@
 import axios from "axios";
-import User from "../src/models/User";
+import User from "../src/models/User.js";
 
 export async function creditBalance(userOrId, coin, amount) {
   const user = userOrId._id ? userOrId : await User.findById(userOrId);
