@@ -5,6 +5,7 @@ import { uploadToCloudinary } from '../middlewares/upload.js';
 import Transaction from '../models/Transaction.js';
 import { Investment } from '../models/Investment.js';
 import { getFiatBalance } from '../../utils/balanceUtils.js';
+import { convertUSDToFiat } from '../../utils/rateConverter.js';
 
 export const getProfile = async (req, res) => {
   try {
@@ -194,5 +195,38 @@ export const changePassword = async (req, res, next) => {
     res.json({ message: 'Password updated successfully' });
   } catch (err) {
     next(err);
+  }
+};
+
+export const getAllPlans = async (req, res) => {
+
+  try {
+    const user = await User.findById(req.user._id);
+    const currency = user?.currency?.toUpperCase() || 'USD';
+    const plans = await InvestmentPlan.find().sort({ createdAt: -1 });
+
+    // Convert all plan amounts to user's selected currency
+    const results = await Promise.all(
+      plans.map(async (plan) => {
+        const minConv = await convertUSDToFiat(plan.minAmount, currency);
+        const maxConv = await convertUSDToFiat(plan.maxAmount, currency);
+
+        return {
+          ...plan.toObject(),
+          minAmount: minConv.fiat,   // now shows fiat equivalent
+          maxAmount: maxConv.fiat,   // now shows fiat equivalent
+          currency: currency,        // e.g. NGN, EUR, GBP, etc.
+        };
+      })
+    );
+
+    res.status(200).json(results);
+  } catch (err) {
+    console.error('❌ Error fetching plans:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch plans',
+      error: err.message,
+    });
   }
 };
