@@ -24,29 +24,26 @@ export async function debitBalance(user, coin, amount) {
  * Convert user's USDT-equivalent balance to their selected fiat currency
  * using the free open.er-api.com service (no API key required)
  */
+// utils/balanceUtils.js
 export async function getFiatBalance(user) {
   // If no fiat selected or USDT, just return current balance
   if (!user.currency || user.currency === 'USDT') return user.balance;
 
   try {
-    // Fetch latest USD → fiat exchange rates
     const res = await axios.get('https://open.er-api.com/v6/latest/USD');
     const rate = res.data?.rates?.[user.currency.toUpperCase()] || 1;
 
-    // Convert USDT (USD) balance to fiat
+    // Convert USDT (USD) balance to fiat — but don’t save it
     const fiatBalance = user.balance * rate;
 
-    // Store the converted balance in the user document
-    user.balance = fiatBalance;
-    await user.save();
-
-    console.log(`💱 USD→${user.currency} rate: ${rate}, stored balance: ${fiatBalance}`);
+    console.log(`💱 USD→${user.currency} rate: ${rate}, displayed balance: ${fiatBalance}`);
     return fiatBalance;
   } catch (err) {
     console.error('Error converting to fiat:', err.message);
     return user.balance; // fallback to current balance
   }
 }
+
 
 export async function getTopCoins(limit = 50) {
   try {
