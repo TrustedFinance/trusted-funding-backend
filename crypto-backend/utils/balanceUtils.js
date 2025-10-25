@@ -44,24 +44,6 @@ export async function getFiatBalance(user) {
   }
 }
 
-let lastRateFetch = 0;
-let cachedRates = null;
-
-export async function convertUSDToFiat(amountUSD, userCurrency) {
-  const now = Date.now();
-  if (!userCurrency || ['USD', 'USDT'].includes(userCurrency)) return { fiat: amountUSD, rate: 1 };
-
-  if (!cachedRates || now - lastRateFetch > 60000) {
-    const res = await axios.get('https://open.er-api.com/v6/latest/USD');
-    cachedRates = res.data?.rates || {};
-    lastRateFetch = now;
-  }
-
-  const rate = cachedRates[userCurrency] || 1;
-  const fiat = amountUSD * rate;
-  return { fiat, rate };
-}
-
 
 export async function getTopCoins(limit = 50) {
   try {

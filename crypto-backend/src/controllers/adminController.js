@@ -6,7 +6,7 @@ import User from '../models/User.js';
 import { Investment } from '../models/Investment.js';
 import { InvestmentPlan } from '../models/Investment.js';
 import Transaction from '../models/Transaction.js';
-import { convertUSDToFiat } from '../../utils/balanceUtils.js';
+import { convertUSDToFiat } from '../../utils/rateConverter.js';
 
 dotenv.config();
 
@@ -241,24 +241,6 @@ export const deletePlan = async (req, res) => {
     });
   }
 };
-
-// ------------------- Get All Plans -------------------
-// export const getAllPlans = async (req, res) => {
-//   try {
-//     const plans = await InvestmentPlan.find();
-//     res.status(200).json({
-//       success: true,
-//       message: 'Fetched all investment plans successfully',
-//       data: { plans },
-//     });
-//   } catch (err) {
-//     res.status(500).json({
-//       success: false,
-//       message: 'Fetch plans failed',
-//       error: err.message,
-//     });
-//   }
-// };
 
 // ------------------- Leaderboard -------------------
 export const getLeaderboard = async (req, res) => {
