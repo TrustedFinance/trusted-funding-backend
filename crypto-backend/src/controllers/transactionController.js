@@ -2,6 +2,7 @@ import { creditBalance, debitBalance } from '../../utils/balanceUtils.js';
 import { sendNotification } from '../../utils/notifications.js';
 import { recalcUserBalance } from '../../utils/recalculateBalance.js';
 import Transaction from '../models/Transaction.js';
+import User from '../models/User.js';
 
 
 // Get transactions for logged-in user
