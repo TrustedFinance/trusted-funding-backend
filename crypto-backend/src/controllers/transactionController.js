@@ -191,7 +191,7 @@ export const withdraw = async (req, res) => {
 // ------------------- Swap -------------------
 export const previewSwap = async (req, res) => {
   try {
-    const { fromCurrency, toCurrency, fromAmount } = req.query;
+    const { fromCurrency, toCurrency, fromAmount } = req.body;
 
     if (!fromCurrency || !toCurrency || !fromAmount) {
       return res.status(400).json({ message: 'Invalid parameters' });
