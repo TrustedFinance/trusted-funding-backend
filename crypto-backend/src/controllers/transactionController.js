@@ -1,6 +1,6 @@
 import { creditBalance, debitBalance } from '../../utils/balanceUtils.js';
 import { sendNotification } from '../../utils/notifications.js';
-import { recalcUserBalance } from '../../utils/recalculateBalance.js';
+import { getCryptoPrices, recalcUserBalance } from '../../utils/recalculateBalance.js';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 
@@ -189,41 +189,62 @@ export const withdraw = async (req, res) => {
 };
 
 // ------------------- Swap -------------------
+
 export const swap = async (req, res) => {
   try {
-    const { fromCurrency, toCurrency, fromAmount, toAmount } = req.body;
-    if (!fromCurrency || !toCurrency || !fromAmount || !toAmount) {
+    const { fromCurrency, toCurrency, fromAmount } = req.body;
+    if (!fromCurrency || !toCurrency || !fromAmount) {
       return res.status(400).json({ message: 'Invalid swap parameters' });
     }
 
     const user = await User.findById(req.user._id);
+    const amount = parseFloat(fromAmount);
 
-    await debitBalance(user, fromCurrency, parseFloat(fromAmount));
-    await creditBalance(user, toCurrency, parseFloat(toAmount));
+    // ✅ 1. Get current prices for both coins in USD
+    const prices = await getCryptoPrices([fromCurrency, toCurrency]);
+    const fromPrice = prices[fromCurrency.toUpperCase()] || 0;
+    const toPrice = prices[toCurrency.toUpperCase()] || 0;
 
+    if (!fromPrice || !toPrice)
+      return res.status(400).json({ message: 'Unable to fetch coin prices' });
+
+    // ✅ 2. Calculate equivalent
+    const usdValue = amount * fromPrice;
+    const toAmount = usdValue / toPrice;
+
+    // ✅ 3. Update user balances
+    await debitBalance(user, fromCurrency, amount);
+    await creditBalance(user, toCurrency, toAmount);
+
+    // ✅ 4. Recalculate total balance in USD
     await recalcUserBalance(user);
 
+    // ✅ 5. Log transaction
     const tx = await Transaction.create({
       user: user._id,
       type: 'swap',
-      amount: fromAmount,
+      amount: amount,
       currency: fromCurrency,
       status: 'completed',
       reference: 'SWAP-' + Date.now(),
       meta: { toCurrency, toAmount },
     });
 
+    // ✅ 6. Notify user
     await sendNotification(
       user._id,
       'swap',
-      `You swapped ${fromAmount} ${fromCurrency} to ${toAmount} ${toCurrency}.`,
+      `You swapped ${amount} ${fromCurrency} → ${toAmount.toFixed(6)} ${toCurrency}.`,
       { transactionId: tx._id }
     );
 
     res.json({
       success: true,
       message: 'Swap completed successfully',
-      transaction: tx,
+      fromCurrency,
+      toCurrency,
+      fromAmount: amount,
+      toAmount: toAmount.toFixed(6),
       balances: Object.fromEntries(user.balances),
       totalBalanceUSD: user.balance,
     });
@@ -232,7 +253,6 @@ export const swap = async (req, res) => {
     res.status(500).json({ message: 'Swap failed', error: err.message });
   }
 };
-
 // ------------------- Receive -------------------
 export const receive = async (req, res) => {
   try {
