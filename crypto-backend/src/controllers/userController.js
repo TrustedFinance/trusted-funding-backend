@@ -19,7 +19,8 @@ export const getProfile = async (req, res) => {
         name: user.name,
         currency: user.currency,
         balances: Object.fromEntries(user.balances),
-        balance: fiatBalance, // ✅ add this
+        balance: fiatBalance,
+        createdAt: user.createdAt
       },
     });
   } catch (err) {
