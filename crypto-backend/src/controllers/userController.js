@@ -6,8 +6,26 @@ import Transaction from '../models/Transaction.js';
 import { Investment } from '../models/Investment.js';
 import { getFiatBalance } from '../../utils/balanceUtils.js';
 
-export const getProfile = (req, res) => {
-  res.json(req.user);
+export const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const fiatBalance = await getFiatBalance(user);
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        currency: user.currency,
+        balances: Object.fromEntries(user.balances),
+        balance: fiatBalance, // ✅ add this
+      },
+    });
+  } catch (err) {
+    console.error('getProfile error:', err);
+    res.status(500).json({ success: false, message: 'Error fetching profile' });
+  }
 };
 
 export const getPortfolio = async (req, res) => {
