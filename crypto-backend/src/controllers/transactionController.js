@@ -189,6 +189,44 @@ export const withdraw = async (req, res) => {
 };
 
 // ------------------- Swap -------------------
+export const previewSwap = async (req, res) => {
+  try {
+    const { fromCurrency, toCurrency, fromAmount } = req.query;
+
+    if (!fromCurrency || !toCurrency || !fromAmount) {
+      return res.status(400).json({ message: 'Invalid parameters' });
+    }
+
+    const amount = parseFloat(fromAmount);
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Invalid amount' });
+    }
+
+    // ✅ Use the same pricing logic
+    const prices = await getCryptoPrices([fromCurrency, toCurrency]);
+    const fromPrice = prices[fromCurrency.toUpperCase()];
+    const toPrice = prices[toCurrency.toUpperCase()];
+
+    if (!fromPrice || !toPrice)
+      return res.status(400).json({ message: 'Unable to fetch coin prices' });
+
+    const usdValue = amount * fromPrice;
+    const toAmount = usdValue / toPrice;
+    const rate = fromPrice / toPrice;
+
+    return res.json({
+      success: true,
+      fromCurrency,
+      toCurrency,
+      fromAmount: amount,
+      toAmount: toAmount.toFixed(6),
+      rate,
+    });
+  } catch (err) {
+    console.error('previewSwap error:', err);
+    res.status(500).json({ message: 'Failed to preview swap', error: err.message });
+  }
+};
 
 export const swap = async (req, res) => {
   try {
