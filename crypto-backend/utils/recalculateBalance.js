@@ -76,15 +76,14 @@ import axios from 'axios';
 
 let cachedCoinList = null;
 let coinListFetchedAt = 0;
-const COIN_LIST_TTL = 24 * 60 * 60 * 1000; // 24h cache
+const COIN_LIST_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 let cachedPrices = null;
 let lastFetch = 0;
-const PRICE_CACHE_TTL = 30 * 1000; // 30s
+const PRICE_CACHE_TTL = 30 * 1000; // 30 seconds
 
 /**
  * Fetch and cache CoinGecko coin list
- * Returns array of { id, symbol, name }
  */
 async function getCoinList() {
   const now = Date.now();
@@ -92,7 +91,7 @@ async function getCoinList() {
 
   try {
     const res = await axios.get('https://api.coingecko.com/api/v3/coins/list');
-    cachedCoinList = res.data; // [{ id: 'bitcoin', symbol: 'btc', name: 'Bitcoin' }, ...]
+    cachedCoinList = res.data;
     coinListFetchedAt = now;
     return cachedCoinList;
   } catch (err) {
@@ -102,11 +101,11 @@ async function getCoinList() {
 }
 
 /**
- * Convert user balance symbols to CoinGecko IDs
- * @param {Array<string>} symbols - e.g. ['BTC', 'ETH']
+ * Map symbols (e.g. ['BTC','ETH']) to CoinGecko IDs
  */
-async function mapSymbolsToIds(symbols) {
-  if (!symbols || !Array.isArray(symbols)) return {};
+async function mapSymbolsToIds(symbols = []) {
+  if (!Array.isArray(symbols)) symbols = [symbols]; // handle single symbol
+  if (symbols.length === 0) return {};
 
   const list = await getCoinList();
   const map = {};
@@ -119,12 +118,13 @@ async function mapSymbolsToIds(symbols) {
   return map;
 }
 
-
 /**
- * Fetch crypto prices in USD for user balances
- * @param {Array<string>} symbols - e.g. ['BTC','ETH']
+ * Fetch crypto prices in USD for a list of symbols
  */
-export async function getCryptoPrices(symbols) {
+export async function getCryptoPrices(symbols = []) {
+  if (!Array.isArray(symbols)) symbols = [symbols];
+  if (symbols.length === 0) return {};
+
   const now = Date.now();
   if (cachedPrices && now - lastFetch < PRICE_CACHE_TTL) return cachedPrices;
 
@@ -153,15 +153,23 @@ export async function getCryptoPrices(symbols) {
 }
 
 /**
- * Recalculate total user balance in USDT
+ * Recalculate total user balance in USD
  */
 export async function recalcUserBalance(user) {
+  if (!user.balances || user.balances.size === 0) {
+    user.balance = 0;
+    await user.save();
+    return 0;
+  }
+
   const symbols = Array.from(user.balances.keys()).map(c => c.toUpperCase());
   const prices = await getCryptoPrices(symbols);
 
   let total = 0;
   for (const [coin, amount] of user.balances.entries()) {
-    total += amount * (prices[coin.toUpperCase()] || 0);
+    const coinSymbol = coin.toUpperCase();
+    const price = prices[coinSymbol] || 0;
+    total += amount * price;
   }
 
   user.balance = total;
