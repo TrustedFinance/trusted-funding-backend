@@ -59,34 +59,43 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/cryptoapp'
 
 
 
-import mongoose from 'mongoose';
-import User from './src/models/User.js';
-import { recalcUserBalance } from './utils/recalculateBalance.js';
+// routes/userRoutes.js (or wherever you keep user routes)
+// import express from 'express';
+// import User from '../models/User.js';
+// import { requireAuth } from '../middleware/auth.js';
 
-async function testRecalcBalance() {
-  // Connect to MongoDB if not already
- await mongoose.connect(MONGO_URI);
+// const router = express.Router();
 
-  // Create a user with some balances
-  const user = new User({
-    email: 'testuser@example.com',
-    password: 'password123',
-    balances: new Map([
-      ['BTC', 0.1],
-      ['ETH', 1],
-      ['USDT', 500]
-    ])
-  });
+// // PATCH /api/user/update-currency
+// router.patch('/update-currency', requireAuth, async (req, res) => {
+//   try {
+//     const { currency } = req.body;
 
-  await user.save();
+//     if (!currency) {
+//       return res.status(400).json({ success: false, message: 'Currency is required' });
+//     }
 
-  // Recalculate total balance in USDT
-  const total = await recalcUserBalance(user);
+//     const user = await User.findById(req.user._id);
+//     if (!user) {
+//       return res.status(404).json({ success: false, message: 'User not found' });
+//     }
 
-  console.log('💰 User balances:', Object.fromEntries(user.balances));
-  console.log('💵 Total balance in USDT:', total);
+//     user.currency = currency.toUpperCase();
+//     await user.save();
 
-  await mongoose.disconnect();
-}
+//     res.status(200).json({
+//       success: true,
+//       message: `Currency updated to ${user.currency}`,
+//       currency: user.currency,
+//     });
+//   } catch (err) {
+//     console.error('❌ Error updating currency:', err);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to update currency',
+//       error: err.message,
+//     });
+//   }
+// });
 
-testRecalcBalance().catch(console.error);
+// export default router;
