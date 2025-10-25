@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import crypto from 'crypto';
 import config from '../config/index.js';
+import { getFiatBalance, getTopCoins } from '../../utils/balanceUtils.js';
 
 const JWT_SECRET = config.jwtSecret || process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('Missing JWT_SECRET');
@@ -15,14 +16,33 @@ export const register = async (req, res) => {
   try {
     const { email, password, name, country, currency, phone } = req.body;
 
+    // Check if user exists
     const exists = await User.findOne({ email });
     if (exists)
       return res.status(400).json({ success: false, message: 'Email already exists' });
 
-    const user = await User.create({ email, password, name, country, currency, phone });
+    // Fetch top 50 crypto symbols
+    const topCoins = await getTopCoins(50); // e.g. ['BTC', 'ETH', 'USDT', ...]
+
+    // Initialize balances map with all 0
+    const balances = new Map();
+    topCoins.forEach(symbol => balances.set(symbol.toUpperCase(), 0));
+
+    // Create user with initialized balances
+    const user = await User.create({
+      email,
+      password,
+      name,
+      country,
+      currency,
+      phone,
+      balances,
+    });
+
+    // Generate token
     const token = signToken(user);
 
-   // Get fiat equivalent of current balance
+    // Calculate fiat equivalent of total balance
     const fiatBalance = await getFiatBalance(user);
 
     res.status(201).json({
@@ -34,11 +54,12 @@ export const register = async (req, res) => {
         email: user.email,
         name: user.name,
         balances: Object.fromEntries(user.balances),
-        balance: fiatBalance, // <-- total in user's fiat currency
-        currency: user.currency
+        balance: fiatBalance,
+        currency: user.currency,
       },
-    })
+    });
   } catch (err) {
+    console.error('register error:', err);
     res.status(500).json({ success: false, message: 'Registration error', error: err.message });
   }
 };

@@ -47,3 +47,27 @@ export async function getFiatBalance(user) {
     return user.balance; // fallback to current balance
   }
 }
+
+export async function getTopCoins(limit = 50) {
+  try {
+    const res = await axios.get('https://api.coingecko.com/api/v3/coins/markets', {
+      params: {
+        vs_currency: 'usd',
+        order: 'market_cap_desc',
+        per_page: limit,
+        page: 1,
+      },
+    });
+    return res.data.map(c => c.symbol.toUpperCase());
+  } catch (err) {
+    console.error('Error fetching top coins:', err.message);
+    // fallback to a static list
+    return [
+      'BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP', 'DOGE', 'ADA', 'TRX', 'TON',
+      'AVAX', 'LINK', 'DOT', 'MATIC', 'BCH', 'LTC', 'NEAR', 'UNI', 'XMR', 'ETC',
+      'ICP', 'APT', 'FIL', 'STX', 'HBAR', 'VET', 'ARB', 'IMX', 'INJ', 'MKR',
+      'OP', 'RUNE', 'QNT', 'SUI', 'AAVE', 'FTM', 'GRT', 'ALGO', 'FLOW', 'EGLD',
+      'AXS', 'SNX', 'KAS', 'CFX', 'RPL', 'CHZ', 'CRV', 'MINA', 'PEPE', 'MANA'
+    ];
+  }
+}
