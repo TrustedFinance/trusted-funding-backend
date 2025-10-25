@@ -1,4 +1,5 @@
 import { sendNotification } from '../../utils/notifications.js';
+import { convertFiatToUSD } from '../../utils/rateConverter.js';
 import { Investment, InvestmentPlan } from '../models/Investment.js';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
@@ -8,52 +9,64 @@ export const createInvestment = async (req, res) => {
   try {
     const { planId, amount } = req.body;
 
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     const plan = await InvestmentPlan.findById(planId);
     if (!plan || !plan.isActive) return res.status(400).json({ message: 'Plan not available' });
 
-    if (amount < plan.minAmount || amount > plan.maxAmount)
-      return res.status(400).json({ message: `Amount must be between ${plan.minAmount} and ${plan.maxAmount}` });
+    // Convert user's fiat amount back to USD for validation
+    const { usd: amountInUSD, rate } = await convertFiatToUSD(amount, user.currency);
 
-    if (req.user.balance < amount) return res.status(400).json({ message: 'Insufficient balance' });
+    // Validate USD amount against plan thresholds
+    if (amountInUSD < plan.minAmount || amountInUSD > plan.maxAmount)
+      return res.status(400).json({
+        message: `Amount must be between ${plan.minAmount} and ${plan.maxAmount} USD (your currency rate: ${rate})`,
+      });
+
+    // Ensure balance is enough in fiat
+    if (user.balance < amount)
+      return res.status(400).json({ message: 'Insufficient balance' });
 
     const payoutAmount = amount * plan.multiplier;
     const startAt = DateTime.now().toJSDate();
     const endAt = DateTime.now().plus({ days: plan.durationDays }).toJSDate();
 
     const investment = await Investment.create({
-      user: req.user._id,
+      user: user._id,
       plan: plan._id,
-      amount,
+      amount, // store as user's fiat input
       multiplier: plan.multiplier,
       durationDays: plan.durationDays,
       startAt,
       endAt,
-      payoutAmount
+      payoutAmount,
+      currency: user.currency, // optional, good for tracking
     });
 
-    // Update user balance and trades
-    await User.findByIdAndUpdate(req.user._id, { $inc: { balance: -amount, 'stats.trades': 1 } });
+    await User.findByIdAndUpdate(user._id, {
+      $inc: { balance: -amount, 'stats.trades': 1 },
+    });
 
-    // Log transaction
     await Transaction.create({
-      user: req.user._id,
+      user: user._id,
       type: 'investment',
       amount: -amount,
+      currency: user.currency,
       status: 'completed',
-      reference: `INV-${investment._id}`
+      reference: `INV-${investment._id}`,
     });
 
-    // Notify user
     await sendNotification(
-      req.user._id,
+      user._id,
       'investment',
-      `You invested ${amount} in ${plan.name}. Payout: ${payoutAmount} in ${plan.durationDays} days.`,
-      { investmentId: inv._id }
+      `You invested ${amount} ${user.currency} in ${plan.name}. Payout: ${payoutAmount} ${user.currency} in ${plan.durationDays} days.`,
+      { investmentId: investment._id }
     );
-
 
     res.json({ message: 'Investment created', investment });
   } catch (err) {
+    console.error('❌ Investment error:', err);
     res.status(500).json({ message: 'Investment error', error: err.message });
   }
 };
