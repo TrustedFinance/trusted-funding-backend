@@ -19,6 +19,7 @@ export const getProfile = async (req, res) => {
         name: user.name,
         currency: user.currency,
         balances: Object.fromEntries(user.balances),
+        walletAddresses: user.walletAddresses,
         balance: fiatBalance,
         createdAt: user.createdAt
       },
