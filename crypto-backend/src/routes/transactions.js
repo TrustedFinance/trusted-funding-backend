@@ -7,7 +7,7 @@ const router = Router();
 router.get('/me', auth, getUserTransactions);
 router.post('/deposit', auth, deposit)
 router.post('/swap', auth, swap)
-router.get('/previewSap', auth, previewSwap)
+router.post('/previewswap', auth, previewSwap)
 router.post('/withdraw', auth, withdraw)
 router.get('/receive', auth, receive)
 
