@@ -154,14 +154,13 @@ export const deleteUser = async (req, res) => {
   }
 };
 
-
 export const getAllPlans = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    const currency = user?.currency?.toUpperCase() || 'USD';
+    // Read currency from query (optional)
+    const currency = (req.query.currency || 'USD').toUpperCase();
+
     const plans = await InvestmentPlan.find().sort({ createdAt: -1 });
 
-    // Convert all plan amounts to user's selected currency
     const results = await Promise.all(
       plans.map(async (plan) => {
         const minConv = await convertUSDToFiat(plan.minAmount, currency);
@@ -169,16 +168,19 @@ export const getAllPlans = async (req, res) => {
 
         return {
           ...plan.toObject(),
-          minAmount: minConv.fiat,   // now shows fiat equivalent
-          maxAmount: maxConv.fiat,   // now shows fiat equivalent
-          currency: currency,        // e.g. NGN, EUR, GBP, etc.
+          minAmount: parseFloat(minConv.fiat.toFixed(2)),
+          maxAmount: parseFloat(maxConv.fiat.toFixed(2)),
+          currency,
         };
       })
     );
 
-    res.status(200).json(results);
+    res.status(200).json({
+      success: true,
+      plans: results,
+    });
   } catch (err) {
-    console.error('❌ Error fetching plans:', err);
+    console.error('❌ Error fetching public plans:', err);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch plans',

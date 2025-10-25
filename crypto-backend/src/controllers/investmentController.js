@@ -1,5 +1,5 @@
 import { sendNotification } from '../../utils/notifications.js';
-import { convertFiatToUSD } from '../../utils/rateConverter.js';
+import { convertFiatToUSD, convertUSDToFiat } from '../../utils/rateConverter.js';
 import { Investment, InvestmentPlan } from '../models/Investment.js';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
@@ -88,5 +88,40 @@ export const getAllInvestments = async (req, res) => {
     res.json(investments);
   } catch (err) {
     res.status(500).json({ message: 'Fetch all investments failed', error: err.message });
+  }
+};
+
+export const getAllPlansPublic = async (req, res) => {
+  try {
+    // Read currency from query (optional)
+    const currency = (req.query.currency || 'USD').toUpperCase();
+
+    const plans = await InvestmentPlan.find().sort({ createdAt: -1 });
+
+    const results = await Promise.all(
+      plans.map(async (plan) => {
+        const minConv = await convertUSDToFiat(plan.minAmount, currency);
+        const maxConv = await convertUSDToFiat(plan.maxAmount, currency);
+
+        return {
+          ...plan.toObject(),
+          minAmount: parseFloat(minConv.fiat.toFixed(2)),
+          maxAmount: parseFloat(maxConv.fiat.toFixed(2)),
+          currency,
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      plans: results,
+    });
+  } catch (err) {
+    console.error('❌ Error fetching public plans:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch plans',
+      error: err.message,
+    });
   }
 };
