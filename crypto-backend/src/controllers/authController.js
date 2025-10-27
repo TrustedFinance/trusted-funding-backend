@@ -22,7 +22,7 @@ export const register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email already exists' });
 
     // Fetch top 50 crypto symbols
-    const topCoins = await getTopCoins(50); // e.g. ['BTC', 'ETH', 'USDT', ...]
+    const topCoins = await getTopCoins(20); // e.g. ['BTC', 'ETH', 'USDT', ...]
 
     // Initialize balances map with all 0
     const balances = new Map();

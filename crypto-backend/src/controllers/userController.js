@@ -6,10 +6,16 @@ import Transaction from '../models/Transaction.js';
 import { Investment } from '../models/Investment.js';
 import { getFiatBalance } from '../../utils/balanceUtils.js';
 import { convertUSDToFiat } from '../../utils/rateConverter.js';
+import { recalcUserBalance } from '../../utils/recalculateBalance.js';
 
 export const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
+
+    // Recalculate balance in USD based on crypto holdings
+    const totalUsd = await recalcUserBalance(user);
+
+    // Convert to user's selected fiat currency
     const fiatBalance = await getFiatBalance(user);
 
     res.json({
@@ -21,8 +27,9 @@ export const getProfile = async (req, res) => {
         currency: user.currency,
         balances: Object.fromEntries(user.balances),
         walletAddresses: user.walletAddresses,
-        balance: fiatBalance,
-        createdAt: user.createdAt
+        balanceUsd: totalUsd,       // raw USD total
+        balanceFiat: fiatBalance,   // converted to NGN or selected currency
+        createdAt: user.createdAt,
       },
     });
   } catch (err) {
@@ -30,6 +37,7 @@ export const getProfile = async (req, res) => {
     res.status(500).json({ success: false, message: 'Error fetching profile' });
   }
 };
+
 
 export const getPortfolio = async (req, res) => {
   const user = await User.findById(req.user._id);

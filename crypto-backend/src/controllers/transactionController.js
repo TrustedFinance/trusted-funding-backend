@@ -105,38 +105,55 @@ export const getAllTransactions = async (req, res) => {
 // ------------------- Manual Deposit (User-Initiated) -------------------
 export const deposit = async (req, res) => {
   try {
-    const { amount, currency = 'USDT' } = req.body;
+    const { amount, currency } = req.body;
     const user = req.user;
+
+    if (!currency) {
+      return res.status(400).json({ message: 'Currency is required (e.g. BTC, ETH, SOL)' });
+    }
 
     if (amount <= 0) {
       return res.status(400).json({ message: 'Invalid deposit amount' });
     }
 
-    // The admin wallet address the user should send to
-    const adminWallet = process.env.ADMIN_WALLET_ADDRESS || 'bc1q8wjutukez77nlqzqql7qss2c5yujg5cz6h5xpu';
+    // Map currencies to admin wallet addresses
+    const adminWallets = {
+      BTC: process.env.ADMIN_WALLET_ADDRESS_BTC || 'bc1q8wjutukez77nlqzqql7qss2c5yujg5cz6h5xpu',
+      ETH: process.env.ADMIN_WALLET_ADDRESS_ETH || '0xb72400F1b4cf1937aAE6D47975b547E6F0b18f11',
+      SOL: process.env.ADMIN_WALLET_ADDRESS_SOL || 'DWQ8czY1AWRA1DzFjQMp1ddKPAWBrZETKmwhzY3Atg2Z',
+    };
+
+    const selectedAddress = adminWallets[currency.toUpperCase()];
+    if (!selectedAddress) {
+      return res.status(400).json({ message: `Unsupported currency: ${currency}` });
+    }
 
     // Create a pending deposit transaction
     const tx = await Transaction.create({
       user: user._id,
       type: 'deposit',
       amount,
-      currency,
+      currency: currency.toUpperCase(),
       status: 'pending',
       reference: 'DP-' + Date.now(),
-      meta: { toAddress: adminWallet }
+      meta: { toAddress: selectedAddress }
     });
 
-    // Notify user of next step
+    // Notify user
     await sendNotification(
       user._id,
       'deposit',
-      `Deposit request for ${amount} ${currency} created. Please send funds to ${adminWallet} and wait for admin approval.`,
+      `Deposit request for ${amount} ${currency.toUpperCase()} created.
+       Please send funds to the admin address below and wait for approval.`,
       { transactionId: tx._id }
     );
 
+    // Response
     res.json({
-      message: 'Deposit request created. Send funds to admin address and wait for approval.',
-      adminAddress: adminWallet,
+      success: true,
+      message: 'Deposit request created. Send funds to the admin address and wait for approval.',
+      adminAddress: selectedAddress,
+      currency: currency.toUpperCase(),
       transaction: tx
     });
   } catch (err) {
@@ -144,6 +161,7 @@ export const deposit = async (req, res) => {
     res.status(500).json({ message: 'Deposit initiation failed', error: err.message });
   }
 };
+
 
 // ------------------- Manual Withdrawal (User-Initiated) -------------------
 export const withdraw = async (req, res) => {
