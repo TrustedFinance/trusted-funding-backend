@@ -1,5 +1,8 @@
 // import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import User from './src/models/User.js';
+import { recalcUserBalance } from './utils/recalculateBalance.js';
+import mongoose from 'mongoose';
 // import bcrypt from 'bcryptjs';
 // import jwt from 'jsonwebtoken';
 // import User from './src/models/User.js';
@@ -59,43 +62,50 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/cryptoapp'
 
 
 
-// routes/userRoutes.js (or wherever you keep user routes)
-// import express from 'express';
-// import User from '../models/User.js';
-// import { requireAuth } from '../middleware/auth.js';
+async function runSeedTest() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log('✅ Connected to MongoDB');
 
-// const router = express.Router();
+    // Create or update a test user
+    let user = await User.findOne({ email: 'example.com' });
 
-// // PATCH /api/user/update-currency
-// router.patch('/update-currency', requireAuth, async (req, res) => {
-//   try {
-//     const { currency } = req.body;
+    if (!user) {
+      user = await User.create({
+        name: 'Chiemerie Okafor',
+        email: 'example.com',
+        currency: 'NGN',
+        balances: {
+          BTC: 0.01,
+          ETH: 0.01,
+          SOL: 0.01,
+          USDT: 500,
+        },
+      });
+      console.log('🧩 Created test user');
+    } else {
+      // Optionally reset balances for testing
+      user.balances = { BTC: 0.01, ETH: 0.01, SOL: 0.01, USDT: 500 };
+      await user.save();
+      console.log('🔄 Reset balances for test user');
+    }
 
-//     if (!currency) {
-//       return res.status(400).json({ success: false, message: 'Currency is required' });
-//     }
+    // Recalculate the balance using live prices
+    console.log('⚙️  Recalculating total balance...');
+    const totalUsd = await recalcUserBalance(user);
 
-//     const user = await User.findById(req.user._id);
-//     if (!user) {
-//       return res.status(404).json({ success: false, message: 'User not found' });
-//     }
+    console.log('💰 Test user balances:', user.balances);
+    console.log('💵 Total (USD):', totalUsd);
 
-//     user.currency = currency.toUpperCase();
-//     await user.save();
+    // Optional: convert to user's currency if needed
+    // const ngnRate = await convertUsdToNgn(totalUsd);
 
-//     res.status(200).json({
-//       success: true,
-//       message: `Currency updated to ${user.currency}`,
-//       currency: user.currency,
-//     });
-//   } catch (err) {
-//     console.error('❌ Error updating currency:', err);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Failed to update currency',
-//       error: err.message,
-//     });
-//   }
-// });
+    await mongoose.disconnect();
+    console.log('✅ Done.');
+  } catch (err) {
+    console.error('❌ Seed test failed:', err);
+  }
+}
 
-// export default router;
+runSeedTest();
+

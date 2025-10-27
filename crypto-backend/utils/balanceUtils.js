@@ -51,7 +51,7 @@ export async function getFiatBalance(user) {
 }
 
 
-export async function getTopCoins(limit = 50) {
+export async function getTopCoins(limit = 20) {
   try {
     const res = await axios.get('https://api.coingecko.com/api/v3/coins/markets', {
       params: {
@@ -68,9 +68,6 @@ export async function getTopCoins(limit = 50) {
     return [
       'BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'XRP', 'DOGE', 'ADA', 'TRX', 'TON',
       'AVAX', 'LINK', 'DOT', 'MATIC', 'BCH', 'LTC', 'NEAR', 'UNI', 'XMR', 'ETC',
-      'ICP', 'APT', 'FIL', 'STX', 'HBAR', 'VET', 'ARB', 'IMX', 'INJ', 'MKR',
-      'OP', 'RUNE', 'QNT', 'SUI', 'AAVE', 'FTM', 'GRT', 'ALGO', 'FLOW', 'EGLD',
-      'AXS', 'SNX', 'KAS', 'CFX', 'RPL', 'CHZ', 'CRV', 'MINA', 'PEPE', 'MANA'
     ];
   }
 }
