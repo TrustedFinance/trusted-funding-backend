@@ -3,7 +3,7 @@ import Kyc from '../models/Kyc.js';
 import bcrypt from 'bcryptjs'
 import { uploadToCloudinary } from '../middlewares/upload.js';
 import Transaction from '../models/Transaction.js';
-import { Investment } from '../models/Investment.js';
+import { Investment, InvestmentPlan } from '../models/Investment.js';
 import { getFiatBalance } from '../../utils/balanceUtils.js';
 import { convertUSDToFiat } from '../../utils/rateConverter.js';
 import { recalcUserBalance } from '../../utils/recalculateBalance.js';
@@ -213,29 +213,60 @@ export const changePassword = async (req, res, next) => {
   }
 };
 
-export const getAllPlans = async (req, res) => {
-
+export const getAllPlansForUser = async (req, res) => {
   try {
+    // 1️⃣ Get the user's preferred currency
     const user = await User.findById(req.user._id);
     const currency = user?.currency?.toUpperCase() || 'USD';
-    const plans = await InvestmentPlan.find().sort({ createdAt: -1 });
 
-    // Convert all plan amounts to user's selected currency
+    // 2️⃣ Get all investment plans
+    const plans = await InvestmentPlan.find({ isActive: true }).sort({ createdAt: -1 });
+
+    // 3️⃣ Convert plan amounts to the user’s selected fiat currency
     const results = await Promise.all(
       plans.map(async (plan) => {
         const minConv = await convertUSDToFiat(plan.minAmount, currency);
-        const maxConv = await convertUSDToFiat(plan.maxAmount, currency);
+        const maxConv = plan.maxAmount
+          ? await convertUSDToFiat(plan.maxAmount, currency)
+          : null;
+
+        // Format numbers for frontend clarity
+        const formattedMin = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency,
+        }).format(minConv.fiat);
+
+        const formattedMax = maxConv
+          ? new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency,
+            }).format(maxConv.fiat)
+          : null;
 
         return {
-          ...plan.toObject(),
-          minAmount: minConv.fiat,   // now shows fiat equivalent
-          maxAmount: maxConv.fiat,   // now shows fiat equivalent
-          currency: currency,        // e.g. NGN, EUR, GBP, etc.
+          id: plan._id,
+          name: plan.name,
+          description: plan.description,
+          multiplier: plan.multiplier,
+          durationDays: plan.durationDays,
+          minAmount: plan.minAmount,         // USD base
+          maxAmount: plan.maxAmount,         // USD base
+          minAmountFiat: minConv.fiat,       // numeric fiat
+          maxAmountFiat: maxConv?.fiat || null,
+          formattedMinAmount: formattedMin,  // e.g. "₦80,000.00"
+          formattedMaxAmount: formattedMax,  // e.g. "₦100,000.00"
+          currency,
+          isActive: plan.isActive,
         };
       })
     );
 
-    res.status(200).json(results);
+    // 4️⃣ Return to frontend
+    res.status(200).json({
+      success: true,
+      currency,
+      plans: results,
+    });
   } catch (err) {
     console.error('❌ Error fetching plans:', err);
     res.status(500).json({
@@ -245,3 +276,4 @@ export const getAllPlans = async (req, res) => {
     });
   }
 };
+
