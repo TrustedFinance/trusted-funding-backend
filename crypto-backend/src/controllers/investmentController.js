@@ -1,5 +1,5 @@
 import { sendNotification } from '../../utils/notifications.js';
-import { convertFiatToUSD, convertUSDToFiat } from '../../utils/rateConverter.js';
+import { convertFiatToUSD } from '../../utils/rateConverter.js';
 import { Investment, InvestmentPlan } from '../models/Investment.js';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
@@ -14,20 +14,22 @@ export const createInvestment = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const plan = await InvestmentPlan.findById(planId);
-    if (!plan || !plan.isActive) return res.status(400).json({ message: 'Plan not available' });
+    if (!plan || !plan.isActive)
+      return res.status(400).json({ message: 'Plan not available' });
 
-    // Convert user's fiat amount back to USD for validation
+    // 🔁 Convert both to USD for accurate comparison
     const { usd: amountInUSD, rate } = await convertFiatToUSD(amount, user.currency);
+    const { usd: balanceInUSD } = await convertFiatToUSD(user.balance, user.currency);
 
-    // Validate USD amount against plan thresholds
+    // ✅ Check user balance (both in USD now)
+    if (balanceInUSD < amountInUSD)
+      return res.status(400).json({ message: 'Insufficient balance' });
+
+    // ✅ Validate against plan thresholds (plan uses USD)
     if (amountInUSD < plan.minAmount || amountInUSD > plan.maxAmount)
       return res.status(400).json({
         message: `Amount must be between ${plan.minAmount} and ${plan.maxAmount} USD (your currency rate: ${rate})`,
       });
-
-    // Ensure balance is enough in fiat
-    if (user.balance < amount)
-      return res.status(400).json({ message: 'Insufficient balance' });
 
     const payoutAmount = amount * plan.multiplier;
     const startAt = DateTime.now().toJSDate();
@@ -36,13 +38,13 @@ export const createInvestment = async (req, res) => {
     const investment = await Investment.create({
       user: user._id,
       plan: plan._id,
-      amount, // store as user's fiat input
+      amount, // store as fiat
       multiplier: plan.multiplier,
       durationDays: plan.durationDays,
       startAt,
       endAt,
       payoutAmount,
-      currency: user.currency, // optional, good for tracking
+      currency: user.currency,
     });
 
     await User.findByIdAndUpdate(user._id, {
@@ -72,15 +74,76 @@ export const createInvestment = async (req, res) => {
   }
 };
 
-// Get user's investments
+
+// Get user's investments + summary
 export const getUserInvestments = async (req, res) => {
   try {
     const investments = await Investment.find({ user: req.user._id }).populate('plan');
-    res.json(investments);
+
+    // If no investments
+    if (!investments.length) {
+      return res.json({
+        success: true,
+        message: 'No investments found',
+        data: {
+          investments: [],
+          summary: {
+            totalInvested: 0,
+            totalEarned: 0,
+            activeInvestments: 0,
+            completedInvestments: 0,
+            pendingEarnings: 0,
+          },
+        },
+      });
+    }
+
+    // Compute summary stats
+    let totalInvested = 0;
+    let totalEarned = 0;
+    let pendingEarnings = 0;
+    let activeInvestments = 0;
+    let completedInvestments = 0;
+
+    investments.forEach(inv => {
+      totalInvested += inv.amount;
+
+      if (inv.status === 'completed') {
+        totalEarned += inv.payoutAmount;
+        completedInvestments++;
+      } else if (inv.status === 'active') {
+        activeInvestments++;
+        // Estimate earnings so far
+        const now = new Date();
+        const elapsedDays = Math.max(0, Math.floor((now - inv.startAt) / (1000 * 60 * 60 * 24)));
+        const progress = Math.min(elapsedDays / inv.durationDays, 1);
+        const earnedSoFar = inv.payoutAmount * progress;
+        pendingEarnings += earnedSoFar;
+      }
+    });
+
+    const summary = {
+      totalInvested,
+      totalEarned,
+      pendingEarnings,
+      activeInvestments,
+      completedInvestments,
+    };
+
+    res.json({
+      success: true,
+      message: 'Investments fetched successfully',
+      data: {
+        investments,
+        summary,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Fetch investments failed', error: err.message });
+    console.error('getUserInvestments error', err);
+    res.status(500).json({ success: false, message: 'Fetch investments failed', error: err.message });
   }
 };
+
 
 // Admin: get all investments
 export const getAllInvestments = async (req, res) => {
