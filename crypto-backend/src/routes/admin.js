@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import auth from '../middlewares/auth.js';
 import admin from '../middlewares/admin.js';
-import { adminLogin, adminRegister, blockUser, createPlan, deletePlan, deleteUser, editPlan, getAllPlans, getInvestmentsDueTomorrow, getPendingAndDue, listAllUsers, reviewKyc, unblockUser } from '../controllers/adminController.js';
+import { adminLogin, adminRegister, blockUser, createPlan, deletePlan, deleteUser, editPlan, getAllKyc, getAllPlans, getInvestmentsDueTomorrow, getPendingAndDue, listAllUsers, reviewKyc, unblockUser } from '../controllers/adminController.js';
 import { getAllInvestments } from '../controllers/investmentController.js';
 import { approveDeposit, approveWithdrawal, getAllTransactions, rejectDeposit, rejectWithdrawal } from '../controllers/transactionController.js';
 import { listAllNotifications } from '../controllers/notificationController.js';
@@ -21,6 +21,7 @@ router.delete('/user/:id', auth, admin, deleteUser);
 // Investments
 router.get('/investments/get', auth, admin, getAllInvestments)
 router.put('/kyc/:kycId', auth, admin, reviewKyc);
+router.get('/kyc', auth, admin, getAllKyc);
 
 //Plans
 router.get('/plans', auth, admin, getAllPlans);

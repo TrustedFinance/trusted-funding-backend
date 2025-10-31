@@ -443,3 +443,39 @@ export const reviewKyc = async (req, res) => {
     res.status(500).json({ message: 'Error reviewing KYC', error: err.message });
   }
 };
+
+// ✅ Get all KYC submissions (admin only)
+export const getAllKyc = async (req, res) => {
+  try {
+    // Optional query params: status, page, limit
+    const { status, page = 1, limit = 20 } = req.query;
+    const filter = {};
+
+    if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+      filter.status = status;
+    }
+
+    // Pagination setup
+    const skip = (Number(page) - 1) * Number(limit);
+
+    // Fetch KYC records
+    const kycs = await Kyc.find(filter)
+      .populate('user', 'name email username country') // show limited user info
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit));
+
+    const total = await Kyc.countDocuments(filter);
+
+    res.json({
+      success: true,
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / limit),
+      kycs,
+    });
+  } catch (err) {
+    console.error('getAllKyc error:', err);
+    res.status(500).json({ success: false, message: 'Error fetching KYC records', error: err.message });
+  }
+};
