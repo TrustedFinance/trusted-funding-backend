@@ -10,6 +10,8 @@ const kycSchema = new Schema({
   selfieUrl: { type: String },
   idImageUrl: { type: String },
   status: { type: String, enum: ['pending','approved','rejected'], default: 'pending' },
+  resubmittedAt: { type: Date },
+  resubmissionCount: { type: Number, default: 0 },
   adminNote: { type: String }
 }, { timestamps: true });
 

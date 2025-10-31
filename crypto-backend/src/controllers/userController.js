@@ -68,29 +68,47 @@ export const uploadKyc = async (req, res) => {
       return res.status(400).json({ message: 'Selfie and ID image are required' });
     }
 
-    // Upload files to Cloudinary
     const selfieResult = await uploadToCloudinary(req.files.selfie[0].buffer, 'kyc/selfies');
     const idImageResult = await uploadToCloudinary(req.files.idImage[0].buffer, 'kyc/id_images');
 
-    // Save KYC record
-    const kyc = await Kyc.create({
-      user: req.user._id,
-      idType,
-      idNumber,
-      address,
-      selfieUrl: selfieResult.secure_url,
-      idImageUrl: idImageResult.secure_url
-    });
+    const user = await User.findById(req.user._id).populate('kyc');
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // 🔥 Re-fetch and persist properly
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    if (user.kyc && ['pending', 'approved'].includes(user.kyc.status)) {
+      return res.status(400).json({ message: `You already have a ${user.kyc.status} KYC submission.` });
     }
 
-    user.kyc = kyc._id;
-    await user.save();
-
+    let kyc;
+    if (user.kyc && user.kyc.status === 'rejected') {
+      // Update existing KYC record
+      kyc = await Kyc.findByIdAndUpdate(
+        user.kyc._id,
+        {
+          idType,
+          idNumber,
+          address,
+          selfieUrl: selfieResult.secure_url,
+          idImageUrl: idImageResult.secure_url,
+          status: 'pending',
+          adminNote: '',
+          resubmittedAt: new Date(),
+          $inc: { resubmissionCount: 1 }
+        },
+        { new: true }
+      );
+    } else {
+      // Create new KYC record
+      kyc = await Kyc.create({
+        user: user._id,
+        idType,
+        idNumber,
+        address,
+        selfieUrl: selfieResult.secure_url,
+        idImageUrl: idImageResult.secure_url,
+      });
+      user.kyc = kyc._id;
+      await user.save();
+    }
 
     res.json({ message: 'KYC submitted successfully', kyc });
   } catch (err) {
@@ -98,6 +116,8 @@ export const uploadKyc = async (req, res) => {
     res.status(500).json({ message: 'Error uploading KYC', error: err.message });
   }
 };
+
+
 
 export const selectCountryCurrency = async (req, res) => {
   try {
