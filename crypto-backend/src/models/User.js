@@ -14,7 +14,7 @@ const userSchema = new Schema({
   kyc: { type: Types.ObjectId, ref: 'Kyc' },
   role: { type: String, enum: ['user', 'admin'], default: 'user' },
   isBlocked: { type: Boolean, default: false },
-
+  isVerified: { type: Boolean, default: false },
   balances: {
     type: Map,
     of: Number,

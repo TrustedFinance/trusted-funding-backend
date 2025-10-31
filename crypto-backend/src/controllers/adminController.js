@@ -6,7 +6,8 @@ import User from '../models/User.js';
 import { Investment } from '../models/Investment.js';
 import { InvestmentPlan } from '../models/Investment.js';
 import Transaction from '../models/Transaction.js';
-import { convertUSDToFiat } from '../../utils/rateConverter.js';
+// import { convertUSDToFiat } from '../../utils/rateConverter.js';
+import Kyc from '../models/Kyc.js';
 
 dotenv.config();
 
@@ -408,5 +409,37 @@ export const listAllUsers = async (req, res) => {
       message: 'Error listing users',
       error: err.message,
     });
+  }
+};
+
+// Admin approves or rejects KYC
+export const reviewKyc = async (req, res) => {
+  try {
+    const { kycId } = req.params;
+    const { status, adminNote } = req.body;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status. Must be approved or rejected.' });
+    }
+
+    const kyc = await Kyc.findById(kycId).populate('user');
+    if (!kyc) return res.status(404).json({ message: 'KYC record not found' });
+
+    kyc.status = status;
+    kyc.adminNote = adminNote || '';
+    await kyc.save();
+
+    // Update user verification status
+    if (status === 'approved') {
+      kyc.user.isVerified = true;
+    } else if (status === 'rejected') {
+      kyc.user.isVerified = false;
+    }
+    await kyc.user.save();
+
+    res.json({ message: `KYC ${status} successfully`, kyc });
+  } catch (err) {
+    console.error('reviewKyc error', err);
+    res.status(500).json({ message: 'Error reviewing KYC', error: err.message });
   }
 };
