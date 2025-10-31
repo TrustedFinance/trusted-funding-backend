@@ -10,60 +10,61 @@ import {DateTime} from "luxon"
 export const createInvestment = async (req, res) => {
   try {
     const { planId, amount } = req.body;
-
-    const user = await User.findById(req.user._id);
+   const user = await User.findById(req.user._id).select('+balances');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const plan = await InvestmentPlan.findById(planId);
     if (!plan || !plan.isActive)
       return res.status(400).json({ message: 'Plan not available' });
 
-    // 🔁 Convert fiat → USD
+    // Convert user's fiat input → USD
     const { usd: amountInUSD, rate } = await convertFiatToUSD(amount, user.currency);
 
-    // ✅ Compare in USD
-    if (user.balance < amountInUSD)
-      return res.status(400).json({ message: 'Insufficient balance' });
-
-    // ✅ Validate plan limits
-    if (amountInUSD < plan.minAmount || amountInUSD > plan.maxAmount)
+    // ✅ Validate plan limits (USD-based)
+    if (amountInUSD < plan.minAmount || amountInUSD > plan.maxAmount) {
+      const minFiat = plan.minAmount * rate;
+      const maxFiat = plan.maxAmount * rate;
       return res.status(400).json({
-        message: `Amount must be between ${plan.minAmount} and ${plan.maxAmount} USD (rate: ${rate})`,
+        message: `Amount must be between ${plan.minAmount} and ${plan.maxAmount} USD (≈ ${minFiat.toLocaleString()} - ${maxFiat.toLocaleString()} ${user.currency})`,
       });
+    }
 
-    const payoutAmount = amount * plan.multiplier;
+    // ✅ Ensure investment is from USDT only
+    const userUSDT = Number(user.balances?.get('USDT') || 0);
+    console.log('User USDT balance:', userUSDT, 'Required amount in USD:', amountInUSD);
+    if (userUSDT < amountInUSD) {
+      return res.status(400).json({
+        message: `Insufficient USDT balance. You have ${userUSDT} USDT, need ${amountInUSD} USDT.`,
+      });
+    }
+
+    // ✅ Create investment
+    const payoutAmount = amountInUSD * plan.multiplier;
     const startAt = new Date();
     const endAt = DateTime.now().plus({ days: plan.durationDays }).toJSDate();
 
-    // ✅ Create investment record
     const investment = await Investment.create({
       user: user._id,
       plan: plan._id,
-      amount, // store fiat amount
+      amount: amountInUSD, // stored in USD
       multiplier: plan.multiplier,
       durationDays: plan.durationDays,
       startAt,
       endAt,
       payoutAmount,
-      currency: user.currency,
+      currency: 'USD',
     });
 
-    // 💵 Deduct balances properly
-    const balances = user.balances || {};
+    // 💵 Deduct from user's USDT balance
+// 💵 Deduct from user's USDT balance
+      const newBalance = userUSDT - amountInUSD;
+      user.balances.set('USDT', newBalance);
+      user.markModified('balances'); // 🧩 important for Map
+      user.stats.trades = (user.stats.trades || 0) + 1;
 
-    // Deduct from user's fiat currency balance if present
-    if (balances[user.currency] && balances[user.currency] >= amount) {
-      balances[user.currency] -= amount;
-    } else {
-      // Fallback to main balance in USD
-      user.balance -= amountInUSD;
-    }
-
-    user.stats.trades = (user.stats.trades || 0) + 1;
-
-    // 🔄 Recalculate total USD equivalent
-    await recalcUserBalance(user);
-
+    // 🧮 Recalc total USD value (for display only)
+    const totalBalance = await recalcUserBalance(user);
+    user.balance = totalBalance;
     await user.save();
 
     // 🧾 Log transaction
@@ -71,29 +72,31 @@ export const createInvestment = async (req, res) => {
       user: user._id,
       type: 'investment',
       amount: -amountInUSD,
-      currency: 'USD',
+      currency: 'USDT',
       status: 'completed',
       reference: `INV-${investment._id}`,
       meta: {
-        fiatAmount: amount,
-        fiatCurrency: user.currency,
+        inputAmount: amount,
+        inputCurrency: user.currency,
         rate,
         planName: plan.name,
       },
     });
 
-    // 🔔 Notify
+    // 🔔 Notify user
     await sendNotification(
       user._id,
       'investment',
-      `You invested ${amount} ${user.currency} in ${plan.name}. Payout: ${payoutAmount} ${user.currency} in ${plan.durationDays} days.`,
+      `You invested ${amount.toLocaleString()} ${user.currency} (~${amountInUSD.toFixed(
+        2
+      )} USDT) in ${plan.name}. Payout: ${payoutAmount.toLocaleString()} USDT in ${plan.durationDays} days.`,
       { investmentId: investment._id }
     );
 
     res.json({
       message: 'Investment created successfully',
       investment,
-      newBalance: user.balance,
+      newBalance: user.balances.USDT,
     });
   } catch (err) {
     console.error('❌ Investment error:', err);
