@@ -1,5 +1,6 @@
 import { sendNotification } from '../../utils/notifications.js';
 import { convertFiatToUSD } from '../../utils/rateConverter.js';
+import { recalcUserBalance } from '../../utils/recalculateBalance.js';
 import { Investment, InvestmentPlan } from '../models/Investment.js';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
