@@ -55,6 +55,7 @@ export const register = async (req, res) => {
         name: user.name,
         balances: Object.fromEntries(user.balances),
         balance: fiatBalance,
+        role:user.role,
         currency: user.currency,
       },
     });
@@ -81,7 +82,7 @@ export const login = async (req, res) => {
       success: true,
       message: 'Login successful',
       token,
-      user: { id: user._id, email: user.email, name: user.name },
+      user: { id: user._id, email: user.email, name: user.name, role:user.role },
     });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Login error', error: err.message });
