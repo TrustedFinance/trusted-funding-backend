@@ -14,20 +14,22 @@ export const createInvestment = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const plan = await InvestmentPlan.findById(planId);
-    if (!plan || !plan.isActive) return res.status(400).json({ message: 'Plan not available' });
+    if (!plan || !plan.isActive)
+      return res.status(400).json({ message: 'Plan not available' });
 
-    // Convert user's fiat amount back to USD for validation
+    // 🔁 Convert both to USD for accurate comparison
     const { usd: amountInUSD, rate } = await convertFiatToUSD(amount, user.currency);
+    const { usd: balanceInUSD } = await convertFiatToUSD(user.balance, user.currency);
 
-    // Validate USD amount against plan thresholds
+    // ✅ Check user balance (both in USD now)
+    if (balanceInUSD < amountInUSD)
+      return res.status(400).json({ message: 'Insufficient balance' });
+
+    // ✅ Validate against plan thresholds (plan uses USD)
     if (amountInUSD < plan.minAmount || amountInUSD > plan.maxAmount)
       return res.status(400).json({
         message: `Amount must be between ${plan.minAmount} and ${plan.maxAmount} USD (your currency rate: ${rate})`,
       });
-
-    // Ensure balance is enough in fiat
-    if (user.balance < amount)
-      return res.status(400).json({ message: 'Insufficient balance' });
 
     const payoutAmount = amount * plan.multiplier;
     const startAt = DateTime.now().toJSDate();
@@ -36,13 +38,13 @@ export const createInvestment = async (req, res) => {
     const investment = await Investment.create({
       user: user._id,
       plan: plan._id,
-      amount, // store as user's fiat input
+      amount, // store as fiat
       multiplier: plan.multiplier,
       durationDays: plan.durationDays,
       startAt,
       endAt,
       payoutAmount,
-      currency: user.currency, // optional, good for tracking
+      currency: user.currency,
     });
 
     await User.findByIdAndUpdate(user._id, {
@@ -71,6 +73,7 @@ export const createInvestment = async (req, res) => {
     res.status(500).json({ message: 'Investment error', error: err.message });
   }
 };
+
 
 // Get user's investments + summary
 export const getUserInvestments = async (req, res) => {
