@@ -1,18 +1,83 @@
 import { creditBalance, debitBalance } from '../../utils/balanceUtils.js';
 import { sendNotification } from '../../utils/notifications.js';
+import { convertUSDToFiat } from '../../utils/rateConverter.js';
 import { getCryptoPrices, recalcUserBalance } from '../../utils/recalculateBalance.js';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 
 
 // Get transactions for logged-in user
+
+
 export const getUserTransactions = async (req, res) => {
   try {
-    const tx = await Transaction.find({ user: req.user._id })
+    const user = req.user; // from auth
+    const userCurrency = user.currency || 'USD';
+
+    let tx = await Transaction.find({ user: user._id })
       .sort({ createdAt: -1 })
-      .limit(100);
+      .limit(100)
+      .lean();
+
+    tx = await Promise.all(
+      tx.map(async (t) => {
+        let displayAmount;
+        let displayCurrency;
+        let note = '';
+
+        // 🪙 1. Crypto deposit or withdrawal
+        if (['deposit', 'withdrawal'].includes(t.type) && t.meta?.cryptoSymbol) {
+          displayAmount = `${Math.abs(t.meta.cryptoAmount || t.amount)} ${t.meta.cryptoSymbol}`;
+          displayCurrency = t.meta.cryptoSymbol;
+          note = `${t.type} in ${t.meta.cryptoSymbol}`;
+        }
+
+        // 💵 2. Manual fiat deposit or withdrawal (no crypto meta)
+        else if (['deposit', 'withdrawal'].includes(t.type) && !t.meta?.cryptoSymbol) {
+          // Convert to user’s selected currency if needed
+          if (t.currency === 'USD' && userCurrency !== 'USD') {
+            const { fiat, rate } = await convertUSDToFiat(Math.abs(t.amount), userCurrency);
+            displayAmount = `${fiat.toFixed(2)} ${userCurrency}`;
+            displayCurrency = userCurrency;
+            note = `${t.type} in ${userCurrency} (rate ${rate.toFixed(2)})`;
+          } else {
+            displayAmount = `${Math.abs(t.amount).toFixed(2)} ${t.currency || userCurrency}`;
+            displayCurrency = t.currency || userCurrency;
+            note = `${t.type} in ${displayCurrency}`;
+          }
+        }
+
+        // 📈 3. Investment transactions
+        else if (t.type === 'investment') {
+          if (['USD', 'USDT'].includes(userCurrency)) {
+            displayAmount = `${Math.abs(t.amount).toFixed(2)} USD`;
+            displayCurrency = 'USD';
+          } else {
+            const { fiat, rate } = await convertUSDToFiat(Math.abs(t.amount), userCurrency);
+            displayAmount = `${fiat.toFixed(2)} ${userCurrency}`;
+            displayCurrency = userCurrency;
+            note = `investment (rate ${rate.toFixed(2)})`;
+          }
+        }
+
+        // 💰 4. All other generic types (swap, payout, etc.)
+        else {
+          displayAmount = `${Math.abs(t.amount).toFixed(2)} ${t.currency || 'USD'}`;
+          displayCurrency = t.currency || 'USD';
+        }
+
+        return {
+          ...t,
+          displayAmount,
+          displayCurrency,
+          note,
+        };
+      })
+    );
+
     res.json(tx);
   } catch (err) {
+    console.error('❌ getUserTransactions error:', err);
     res.status(500).json({ message: 'Error fetching transactions', error: err.message });
   }
 };
@@ -116,6 +181,7 @@ export const deposit = async (req, res) => {
       return res.status(400).json({ message: 'Invalid deposit amount' });
     }
 
+   const crypto = currency.toUpperCase();
     // Map currencies to admin wallet addresses
     const adminWallets = {
       BTC: process.env.ADMIN_WALLET_ADDRESS_BTC || 'bc1q8wjutukez77nlqzqql7qss2c5yujg5cz6h5xpu',
@@ -136,8 +202,13 @@ export const deposit = async (req, res) => {
       currency: currency.toUpperCase(),
       status: 'pending',
       reference: 'DP-' + Date.now(),
-      meta: { toAddress: selectedAddress }
+      meta: { toAddress: selectedAddress,      meta: {
+        cryptoSymbol: crypto,      // e.g. BTC
+        cryptoAmount: amount,      // raw number entered by user
+        toAddress: selectedAddress // admin wallet address
+      } }
     });
+
 
     // Notify user
     await sendNotification(
@@ -162,7 +233,6 @@ export const deposit = async (req, res) => {
   }
 };
 
-
 // ------------------- Manual Withdrawal (User-Initiated) -------------------
 export const withdraw = async (req, res) => {
   try {
@@ -173,33 +243,54 @@ export const withdraw = async (req, res) => {
       return res.status(400).json({ message: 'Invalid withdrawal amount' });
     }
 
-    if (!user.walletAddresses || !user.walletAddresses[currency]) {
-      return res.status(400).json({ message: `No wallet address set for ${currency}` });
+    const crypto = currency.toUpperCase();
+
+    // ✅ Check if user has the wallet address for the currency
+    if (!user.walletAddresses || !user.walletAddresses[crypto]) {
+      return res.status(400).json({ message: `No wallet address set for ${crypto}` });
     }
 
-    // Just create a pending transaction — no deduction yet
+    // ✅ Check if user has sufficient balance in the currency
+    const balance = user.balances?.get
+      ? user.balances.get(crypto) || 0
+      : user.balances?.[crypto] || 0;
+
+    if (balance < amount) {
+      return res.status(400).json({
+        message: `Insufficient balance. You have ${balance} ${crypto}, but tried to withdraw ${amount} ${crypto}.`
+      });
+    }
+
+    // ✅ Create a pending transaction — funds not deducted yet
     const tx = await Transaction.create({
       user: user._id,
       type: 'withdrawal',
       amount,
-      currency,
+      currency: crypto,
       status: 'pending',
       reference: 'WD-' + Date.now(),
-      meta: { provider: 'manual', toAddress: user.walletAddresses[currency] }
+      meta: {
+        provider: 'manual',
+        toAddress: user.walletAddresses[crypto],
+        cryptoSymbol: crypto,
+        cryptoAmount: amount
+      }
     });
 
-    // Notify user of pending request
+    // ✅ Notify user of pending withdrawal
     await sendNotification(
       user._id,
       'withdrawal',
-      `Your withdrawal request of ${amount} ${currency} has been received and is pending admin approval.`,
+      `Your withdrawal request of ${amount} ${crypto} has been received and is pending admin approval.`,
       { transactionId: tx._id }
     );
 
     res.json({
+      success: true,
       message: 'Withdrawal request submitted and pending admin approval.',
       transaction: tx
     });
+
   } catch (err) {
     console.error('withdrawal error', err);
     res.status(500).json({ message: 'Withdrawal error', error: err.message });

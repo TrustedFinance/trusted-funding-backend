@@ -49,10 +49,15 @@ export const createInvestment = async (req, res) => {
       currency: user.currency,
     });
 
-    // 💵 Deduct fiat equivalent from balance (converted to USD)
-    await User.findByIdAndUpdate(user._id, {
-      $inc: { balance: -amountInUSD, 'stats.trades': 1 },
-    });
+  // 💵 Deduct USD amount safely
+await User.findByIdAndUpdate(user._id, {
+  $inc: { balance: -Number(amountInUSD), 'stats.trades': 1 },
+});
+
+// Get updated balance to confirm
+const updatedUser = await User.findById(user._id);
+
+
 
     await Transaction.create({
       user: user._id,
@@ -70,13 +75,12 @@ export const createInvestment = async (req, res) => {
       { investmentId: investment._id }
     );
 
-    res.json({ message: 'Investment created', investment });
+    res.json({ message: 'Investment created', investment, newBalance: updatedUser.balance });
   } catch (err) {
     console.error('❌ Investment error:', err);
     res.status(500).json({ message: 'Investment error', error: err.message });
   }
 };
-
 
 // Get user's investments + summary
 export const getUserInvestments = async (req, res) => {
@@ -146,7 +150,6 @@ export const getUserInvestments = async (req, res) => {
     res.status(500).json({ success: false, message: 'Fetch investments failed', error: err.message });
   }
 };
-
 
 // Admin: get all investments
 export const getAllInvestments = async (req, res) => {
