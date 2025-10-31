@@ -3,6 +3,7 @@ import { convertFiatToUSD, convertUSDToFiat } from '../../utils/rateConverter.js
 import { Investment, InvestmentPlan } from '../models/Investment.js';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
+import {DateTime} from "luxon"
 
 // Create user investment
 export const createInvestment = async (req, res) => {
