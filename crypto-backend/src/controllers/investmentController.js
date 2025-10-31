@@ -17,15 +17,17 @@ export const createInvestment = async (req, res) => {
     if (!plan || !plan.isActive)
       return res.status(400).json({ message: 'Plan not available' });
 
-    // 🔁 Convert both to USD for accurate comparison
+    // 🔁 Convert amount (from fiat) → USD
     const { usd: amountInUSD, rate } = await convertFiatToUSD(amount, user.currency);
-    const { usd: balanceInUSD } = await convertFiatToUSD(user.balance, user.currency);
 
-    // ✅ Check user balance (both in USD now)
+    // ✅ Balance is already in USD
+    const balanceInUSD = user.balance;
+
+    // ✅ Compare both in USD
     if (balanceInUSD < amountInUSD)
       return res.status(400).json({ message: 'Insufficient balance' });
 
-    // ✅ Validate against plan thresholds (plan uses USD)
+    // ✅ Validate plan limits (plan uses USD)
     if (amountInUSD < plan.minAmount || amountInUSD > plan.maxAmount)
       return res.status(400).json({
         message: `Amount must be between ${plan.minAmount} and ${plan.maxAmount} USD (your currency rate: ${rate})`,
@@ -38,7 +40,7 @@ export const createInvestment = async (req, res) => {
     const investment = await Investment.create({
       user: user._id,
       plan: plan._id,
-      amount, // store as fiat
+      amount, // store fiat
       multiplier: plan.multiplier,
       durationDays: plan.durationDays,
       startAt,
@@ -47,15 +49,16 @@ export const createInvestment = async (req, res) => {
       currency: user.currency,
     });
 
+    // 💵 Deduct fiat equivalent from balance (converted to USD)
     await User.findByIdAndUpdate(user._id, {
-      $inc: { balance: -amount, 'stats.trades': 1 },
+      $inc: { balance: -amountInUSD, 'stats.trades': 1 },
     });
 
     await Transaction.create({
       user: user._id,
       type: 'investment',
-      amount: -amount,
-      currency: user.currency,
+      amount: -amountInUSD,
+      currency: 'USD',
       status: 'completed',
       reference: `INV-${investment._id}`,
     });
